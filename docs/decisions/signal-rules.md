@@ -65,3 +65,30 @@ If there is no rate this month, the trend is empty.
 ## Rejected rows
 
 The loaders never drop rows silently. Every rejected row comes back with its CSV line number, the row and the reason.
+
+## Month-1 composite score (appended 2026-10-27, before any data or code)
+
+A score from 0 to 3 per business per month, built from one `summarise_contact_signals()` row:
+
+| Signal | Point |
+|---|---|
+| Missed call: the month's call was `voicemail` or `no_answer`, in any band | +1 |
+| `voicemail_greeting_present = no` | +1 |
+| Form: `form_reply_hours` is `no_reply` or greater than 24 | +1 |
+
+**Bands:** `hot` = 2 or 3 points. `cold` = 0 points. `middle` = 1 point, **excluded from the calibration test**.
+
+**The 24-hour cut-off is a judgment**, recorded here before any data was collected. It is not fitted to results.
+
+**From month 3:** add the rolling 3-month missed rate. This is not built yet.
+
+A missing signal gives no point: no form sent that month, no greeting heard, or no valid call.
+**Eligible for the test:** the business is not on the do-not-contact list, its `entity_flag` is `likely_corporate`, it
+has at least one valid (non-`invalid`) call that month, **and a form was sent to it that month at least 72 hours before
+the ranking runs** (Dallas time, real elapsed hours).
+Every eligible row is marked `manual_entity_check = required`.
+
+*Amended 2026-10-27, before any selection:*
+1. A form must have been sent that month, so that `cold` (0 points) means "signals measured and none missed", not
+   "no form data".
+2. That form must be at least 72 hours old when the ranking runs, so that `no_reply` is final and not "still waiting".
