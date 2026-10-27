@@ -85,7 +85,8 @@ caller may read the number live on Google Maps to dial it, but **must never writ
 **Never collect** personal mobile numbers or personal email addresses, and never take anything from directories,
 data brokers, people-search sites, paid lists or social media. Not a person's direct line, and not a staff page.
 
-**Never scrape.** Every lookup is done by hand in a browser. No scrapers, extensions, bulk lookup services or scripts.
+~~**Never scrape.** Every lookup is done by hand in a browser. No scrapers, extensions, bulk lookup services or scripts.~~
+**Superseded 2026-10-27**, see "Rule changes" below and `lookup-automation.md`.
 
 **Checking the sheet:** `check_lookup_sheet()` reports every row where:
 - a phone or email is present but its source URL is missing, or a source URL is not on the row's `website_url` site;
@@ -93,3 +94,9 @@ data brokers, people-search sites, paid lists or social media. Not a person's di
 - `website_url` is `no_website` but a phone, form URL or email is filled in.
 
 Fix every reported row before calls start.
+
+## Rule changes
+
+| Date | Old rule | New rule | Reason |
+|---|---|---|---|
+| 2026-10-27 (before any automated lookup) | "Never scrape. Every lookup is done by hand." | Automated lookup under the rules in `lookup-automation.md`: Google Places (New), used live, finds each business's website, then a strict own-site reader reads at most 2 pages (homepage + one contact page), obeys robots.txt, sends an honest User-Agent and makes at most 1 request per second. It stores only a phone from `tel:` links or schema.org `telephone`, the contact-form page URL and the website URL, each with its source page. Emails are never collected. Anything it can't confirm goes to a manual queue, worked by hand under the Lookup step rules above. | The open-source extractor (vdrmota) was rejected after a sandbox security test: 104 dependency advisories, fingerprint spoofing, and it mixed personal contacts in with business ones. A narrow reader with explicit limits replaces it. |
