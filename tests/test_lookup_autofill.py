@@ -15,7 +15,10 @@ from leads.lookup_autofill import AUTO_COLUMNS, autofill_lookup
 from leads.place_match import (
     PlacesUnavailable, fetch_website_live, find_place, find_place_id, load_api_key, name_matches_place, shares_main_words,
 )
-from leads.website_contacts import Response, SiteUnreadable, Throttle, read_own_site_contacts, same_site, us_phone
+from leads import website_contacts
+from leads.website_contacts import (
+    Response, SiteUnreadable, Throttle, http_get, read_own_site_contacts, same_site, us_phone,
+)
 from signals.lookup_sheet import check_lookup_sheet
 
 SITE = "https://www.sample-cooling.example/"
@@ -139,6 +142,30 @@ def test_tracking_parameters_are_dropped():
     web = sample_site()
     contacts = read_own_site_contacts(SITE + "?utm_source=gmb&utm_medium=organic", get=web)
     assert contacts["website_url"] == SITE and web.page_requests()[0] == SITE
+
+
+def test_user_agent_carries_the_research_contact(monkeypatch):
+    from email.message import Message
+    headers = Message()
+    headers["Content-Type"] = "text/html; charset=utf-8"
+    seen = {}
+
+    class FakeResponse:
+        status = 200
+
+        def __init__(self):
+            self.headers = headers
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self, *a): return b"<html></html>"
+
+    def fake_open(request, timeout):
+        seen.update(user_agent=request.get_header("User-agent"), timeout=timeout)
+        return FakeResponse()
+
+    monkeypatch.setattr(website_contacts._OPENER, "open", fake_open)
+    assert http_get("https://x.example/", throttle=Throttle(min_interval=0)).status == 200
+    assert seen == {"user_agent": "OptomateResearch/0.1 (research contact: ops@optomate.co.uk)", "timeout": 10}
 
 
 def test_one_request_per_second():
@@ -323,7 +350,7 @@ def run_autofill(tmp_path, capsys=None):
         return sites[url]
 
     out, queue = tmp_path / "auto.csv", tmp_path / "queue.csv"
-    report = autofill_lookup(write_call_list(tmp_path, names), out, queue, find_place=lambda n, c: places.get(n),
+    report = autofill_lookup(write_call_list(tmp_path, names), out, queue, find_place=lambda n, c: (places[n], "") if n in places else (None, "no_place_none"),
                              website_of=websites.get, read_site=read_site, today=date(2026, 10, 28))
     return report, out, queue
 
@@ -333,7 +360,7 @@ def test_autofill_routes_every_business_once(tmp_path):
     auto, queued = read_rows(out), read_rows(queue)
     assert [r["licence_number"] for r in auto] == ["S0"]
     assert {r["licence_number"]: r["reason"] for r in queued} == {
-        "S1": "no_place", "S2": "no_website", "S3": "robots_blocked", "S4": "name_mismatch", "S5": "no_tel_phone"}
+        "S1": "no_place_none", "S2": "no_website", "S3": "robots_blocked", "S4": "name_mismatch", "S5": "no_tel_phone"}
     assert report["auto_filled"] == 1 and report["places_calls"] == 11  # 6 searches + 5 details
 
 

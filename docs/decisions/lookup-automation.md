@@ -26,7 +26,7 @@ The code is `src/leads/place_match.py`, `src/leads/website_contacts.py` and `src
 - **Obey robots.txt** for the token `OptomateResearch`. If it disallows a page, that page is not fetched.
   If robots.txt answers 401/403, or can't be reached (server error, timeout), nothing on the site is fetched.
   A 404 means no rules, so everything is allowed.
-- **User-Agent:** `OptomateResearch/0.1 (research contact: see README)`. No other identity, no browser disguise, no
+- **User-Agent:** `OptomateResearch/0.1 (research contact: ops@optomate.co.uk)`. No other identity, no browser disguise, no
   fingerprinting, no proxies.
 - **At most 1 request per second**, counted across every request (robots.txt, pages and redirects).
 - **10-second timeout** per request. **No retries.** A failure goes to the manual queue.
@@ -62,7 +62,7 @@ The Places result is picked with a looser test, 70% of the main words (see "Rule
 
 - `data/logs/2026-11_lookup_auto.csv`: the lookup sheet columns plus `place_id`, one row per accepted business,
   `lookup_date` = run date, `lookup_initials = auto`.
-- `data/logs/2026-11_manual_queue.csv`: every other business, with its `reason`: `no_place`, `no_website`,
+- `data/logs/2026-11_manual_queue.csv`: every other business, with its `reason`: `no_place_none`, `no_place_name`, `no_place_zip`, `no_place_texas`, `no_website`,
   `robots_blocked`, `fetch_failed`, `redirect_off_site`, `name_mismatch`, `no_tel_phone`. A queue row keeps
   `website_url` and `form_url` only when the site passed the name check. Queue rows are looked up by hand under the
   Lookup step rules.
@@ -105,3 +105,10 @@ fixed by either change.
 `no_place_none` (no results), `no_place_name` (no result shares the name), `no_place_zip` (name matches, Texas
 address without ZIP), `no_place_texas` (name matches, not in Texas). The v2 run measures `no_place_zip` across all
 businesses, which is the evidence needed before changing the address rule.
+
+### 2026-10-27: User-Agent contact and queue reasons (after the v2 run)
+
+| | Old rule | New rule | Reason |
+|---|---|---|---|
+| User-Agent | `OptomateResearch/0.1 (research contact: see README)` | `OptomateResearch/0.1 (research contact: ops@optomate.co.uk)` | The README is in a private repo, so a site owner reading their server logs couldn't reach it. The address now travels with every request. |
+| Queue reason for a Places miss | `no_place`, written by `lookup_autofill.py` | The failed test: `no_place_none`, `no_place_name`, `no_place_zip`, `no_place_texas` | The v2 run needed a separate runner to record these. They are now written by the module itself, so every future run records them. |
