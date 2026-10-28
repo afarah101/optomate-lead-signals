@@ -45,6 +45,7 @@ longitude −98.1 to −96.0, latitude 32.0 to 33.5. The box is wider than the c
    the 2026-10-27 extract have empty business and mailing address fields. So the licence's ZIP can't be compared.
    Instead, a record must have an address with region `TX` (or `Texas`) and a DFW ZIP, meaning a postcode starting `75`
    or `76`, with an optional ZIP+4. Records without a ZIP are not matched.
+   *Superseded 2026-10-28 by the ZIP-to-county rule below (rule changes).*
 3. **Identity is confirmed only on the business's own site.** A matched record is only a candidate. Its website goes
    to the existing reader (`website_contacts.read_own_site_contacts`, unchanged), and the site is confirmed only by:
    - the existing licence check: the TACL licence number is shown on the site; or
@@ -99,3 +100,31 @@ To remove it: delete `~/.duckdb/`.
 `confirmed` and `no_tel_phone` are `verified`; `robots_blocked` is `unverified`; `no_match`, `no_website`,
 `name_mismatch`, `fetch_failed` and `redirect_off_site` are `unresolved`. The existing
 `2026-11_open_places_test.csv` isn't relabelled.
+
+### 2026-10-28: ZIP-to-county with the Census ZCTA-to-County file (before the code)
+
+| | Old rule | New rule |
+|---|---|---|
+| Address | Region `TX`/`Texas` and a postcode starting `75` or `76` (anywhere in DFW) | The record's postcode, trimmed to 5 digits (ZIP+4 allowed), must lie in **the business's own TDLR county** |
+| Test | Pattern only | A row in the Census file links that 5-digit ZCTA to the county's FIPS code with `AREALAND_PART > 0` |
+
+**Source.** U.S. Census Bureau, 2020 ZCTA to County Relationship File:
+`https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt`, retrieved
+2026-10-28. It's public, with no account needed. It's saved as `data/raw/zcta_county_2020.txt` (Git-ignored).
+
+**The file as read** (2026-10-28):
+- Pipe-delimited, with a UTF-8 byte-order mark and 47,863 data rows.
+- Columns used, exactly as in its header: `GEOID_ZCTA5_20` (5-digit ZCTA), `GEOID_COUNTY_20` (5-digit county FIPS)
+  and `AREALAND_PART` (land area of the ZCTA–county overlap, square metres).
+- 903 rows have an empty `GEOID_ZCTA5_20` (county area outside any ZCTA). These are skipped.
+- 7 linked rows have `AREALAND_PART = 0` (a water-only overlap). These don't link.
+- There is no business-share ratio, so any land overlap counts.
+
+**County FIPS**, confirmed against the file's own `NAMELSAD_COUNTY_20`: Collin 48085, Dallas 48113, Denton 48121,
+Ellis 48139, Johnson 48251, Kaufman 48257, Parker 48367, Rockwall 48397, Tarrant 48439.
+
+**Limits.**
+- A ZCTA is the Census's area version of a ZIP, not the USPS ZIP itself. PO-box-only and some business ZIPs have no
+  ZCTA, so a record with one of those ZIPs doesn't match.
+- A ZIP that crosses a county line matches each county it touches. The own-site check still decides identity.
+- The region (`TX`) test is dropped, because a ZCTA linked to a Texas county FIPS (`48…`) is in Texas.

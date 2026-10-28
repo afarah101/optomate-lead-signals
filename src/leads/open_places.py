@@ -6,7 +6,6 @@ licence numbers and outcomes only, never URLs.
 """
 
 import csv
-import re
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -14,13 +13,12 @@ from pathlib import Path
 from leads.identity_label import identity_label
 from leads.place_match import _main_word_stems, shares_main_words
 from leads.website_contacts import SiteUnreadable, read_own_site_contacts
+from leads.zip_county import load_zcta_counties, zip_in_county
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 OVERTURE_RELEASE = "2026-10-21.0"
 OVERTURE_PLACES = "s3://overturemaps-us-west-2/release/{}/theme=places/type=place/*"
 DFW_BOX = (-98.1, 32.0, -96.0, 33.5)  # xmin, ymin, xmax, ymax around the 9 DFW counties; a pre-filter only
-DFW_ZIP = re.compile(r"7[56]\d{3}(-\d{4})?")
-TEXAS_REGIONS = {"TX", "TEXAS"}
 MAX_SITES_PER_BUSINESS = 5
 QUEUE_INPUT_COLUMNS = ("licence_number", "business_name", "county")  # the queue has no licence holder column
 OUT_COLUMNS = ["licence_number", "business_name", "county", "outcome", "identity_label", "match_by", "matched_records",
@@ -51,9 +49,8 @@ def fetch_dfw_places(release: str = OVERTURE_RELEASE) -> list[dict]:
             for id_, name, confidence, websites, addresses, datasets in rows]
 
 
-def has_dfw_zip(record: dict) -> bool:
-    return any((a.get("region") or "").upper() in TEXAS_REGIONS and DFW_ZIP.fullmatch(a.get("postcode") or "")
-               for a in record["addresses"])
+def in_business_county(record: dict, county: str, zcta_counties: dict[str, set[str]]) -> bool:
+    return any(zip_in_county(a.get("postcode"), county, zcta_counties) for a in record["addresses"])
 
 
 def build_name_index(records: list[dict]) -> dict[str, set[int]]:
@@ -64,13 +61,15 @@ def build_name_index(records: list[dict]) -> dict[str, set[int]]:
     return index
 
 
-def matching_records(business_name: str, records: list[dict], index: dict[str, set[int]]) -> list[dict]:
-    """Records whose name has every main word of the licence name (same test as shares_main_words) and a DFW ZIP."""
+def matching_records(business_name: str, county: str, records: list[dict], index: dict[str, set[int]],
+                     zcta_counties: dict[str, set[str]]) -> list[dict]:
+    """Records whose name has every main word of the licence name (same test as shares_main_words) and a ZIP in the
+    business's TDLR county."""
     stems = _main_word_stems(business_name)
     if not stems:
         return []
     positions = set.intersection(*(index.get(stem, set()) for stem in stems))
-    return [records[p] for p in sorted(positions) if has_dfw_zip(records[p])]
+    return [records[p] for p in sorted(positions) if in_business_county(records[p], county, zcta_counties)]
 
 
 def confirm_on_own_site(business: dict, matched: list[dict], read_site=read_own_site_contacts) -> dict:
@@ -103,8 +102,8 @@ def confirm_on_own_site(business: dict, matched: list[dict], read_site=read_own_
     return result | ({"outcome": first_reason} if first_reason else {})
 
 
-def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], read_site=read_own_site_contacts,
-                                 today: date | None = None) -> dict:
+def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], zcta_counties: dict[str, set[str]],
+                                 read_site=read_own_site_contacts, today: date | None = None) -> dict:
     out_csv = Path(out_csv)
     if out_csv.exists():
         raise FileExistsError(f"{out_csv} already exists; it is never overwritten")
@@ -116,7 +115,7 @@ def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], read_s
         writer = csv.DictWriter(f, fieldnames=OUT_COLUMNS)
         writer.writeheader()
         for business in businesses:
-            matched = matching_records(business["business_name"], records, index)
+            matched = matching_records(business["business_name"], business["county"], records, index, zcta_counties)
             result = confirm_on_own_site(business, matched, read_site)
             label = identity_label(result["outcome"])
             writer.writerow({column: "" for column in OUT_COLUMNS} | business | result
@@ -137,4 +136,5 @@ def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], read_s
 
 if __name__ == "__main__":
     print(measure_open_places_recovery(DATA_DIR / "logs" / "2026-11_manual_queue_v3.csv",
-                                       DATA_DIR / "logs" / "2026-11_open_places_test.csv", fetch_dfw_places()))
+                                       DATA_DIR / "logs" / "2026-11_open_places_test.csv", fetch_dfw_places(),
+                                       load_zcta_counties()))
