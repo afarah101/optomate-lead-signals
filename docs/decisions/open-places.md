@@ -155,3 +155,29 @@ the wrong businesses; the county rule rejected right ones.
 
 The DFW bounding box is still a pre-filter on the Overture read, so "any Texas county" in practice means Texas ZIPs
 inside the box.
+
+## Foursquare OS Places test (2026-10-28): closed
+
+A toy test, `scripts/prototype_fsq.py`. It ran on the same 80 queued businesses as v3:
+- the same match rule: name, plus a ZIP in any Texas county;
+- the same own-site check and the same `identity_label()`.
+
+The source was `places.datasets.places_os` (Places Portal Iceberg catalog), read once and cached in
+`data/raw/fsq/`: open Texas places inside the DFW box, 476,898 rows. The output is
+`data/leads/2026-11_fsq_test_v1.csv`.
+
+| | Overture v3 | Foursquare | Together |
+|---|---|---|---|
+| Verified | 6 | 3, all also verified by Overture | **6**: Foursquare adds **0** new verified |
+| Phones | 3 (all from the business's own site) | 3 (1 from the own site, 2 from Foursquare `tel`) | **5 of 80** (3 → 5): the 2 new are Foursquare phones for businesses already verified on their own site (`no_tel_phone`) |
+| The 59 v3 `no_match` rows | n/a | 3 found by name + ZIP, **0 verified** (2 `fetch_failed`, 1 `robots_blocked`) | n/a |
+
+Where both sources confirmed a website (3 rows), it was the same website.
+
+**Conclusion.** Name search from the TDLR list has hit its limit:
+- Google Places: 20 of 100 auto-filled;
+- Overture: 6 of the 80 queued verified;
+- Foursquare: no new verified business.
+
+The next step is to start from the other end: businesses with a website, read the licence number from the site, then
+join it to TDLR (the reverse lookup).
