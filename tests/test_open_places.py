@@ -170,6 +170,8 @@ def test_measurement_writes_only_its_own_file_and_never_overwrites(tmp_path):
     assert list(rows[0]) == OUT_COLUMNS and len(rows) == 2
     assert rows[0]["website_url"] == SITE and rows[0]["lookup_date"] == "2026-10-28"
     assert rows[1]["outcome"] == "no_match" and rows[1]["website_url"] == ""
+    assert [r["identity_label"] for r in rows] == ["verified", "unresolved"]
+    assert summary["identity_labels"] == {"verified": 1, "unresolved": 1}
     assert summary["confirmed_on_own_site"] == 1 and summary["new_phones"] == 1
     with pytest.raises(FileExistsError):
         measure_open_places_recovery(queue, out, [], reader({}))

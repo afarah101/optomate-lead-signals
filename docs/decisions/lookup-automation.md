@@ -203,3 +203,20 @@ same prefix with different punctuation (decided in chat, 28 Oct 2026).
 only `match_by=licence` in `notes` (0 of the 15 rows contain any `TACL` text), so it isn't known whether any of them
 matched on a prefix the new rule rejects. Those rows stay as they are. The next run that re-reads those sites
 applies the new rule, and any site that now fails falls back to the site-name check, or else to `name_mismatch`.
+
+### 2026-10-28: Identity label on every row (before the code)
+
+Every auto-filled and queue row gets an `identity_label` column, from `src/leads/identity_label.py` (decided in
+chat, 28 Oct 2026; terms in `CONTEXT.md`):
+
+| `identity_label` | Reasons | Goes to |
+|---|---|---|
+| `verified` | auto-filled (site confirmed, phone found), `no_tel_phone` (site confirmed, no phone) | Outreach may use it. **Only `verified` rows go to outreach** |
+| `unverified` | `robots_blocked` (the own site couldn't be read) | Manual queue; never outreach |
+| `unresolved` | `name_mismatch`, `fetch_failed`, `redirect_off_site` (site tried, identity not settled); `no_place_none`, `no_place_zip`, `no_place_texas`, `no_website`, `places_budget` (no candidate to check) | **Hand-check queue** (the manual queue); never outreach |
+
+- **The manual queue is the hand-check queue.** Unresolved rows already land there; the label now says why a person
+  must check.
+- A reason with no label is an error: the run stops rather than write an unlabelled row.
+- No outreach code exists yet. `may_go_to_outreach(row)` is the gate it must use: true only for `verified`.
+- v1–v4 files are not relabelled. The column appears from the next run.

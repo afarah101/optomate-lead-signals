@@ -401,6 +401,14 @@ def test_autofill_routes_every_business_once(tmp_path):
     assert report["auto_filled"] == 1 and report["places_calls"] == 11  # 6 searches + 5 details
 
 
+def test_every_row_carries_its_identity_label(tmp_path):
+    _, out, queue = run_autofill(tmp_path)
+    assert [r["identity_label"] for r in read_rows(out)] == ["verified"]
+    assert {r["reason"]: r["identity_label"] for r in read_rows(queue)} == {
+        "no_place_none": "unresolved", "no_website": "unresolved", "robots_blocked": "unverified",
+        "name_mismatch": "unresolved", "no_tel_phone": "verified"}
+
+
 def test_autofill_row_is_complete_and_passes_the_checker(tmp_path):
     _, out, _ = run_autofill(tmp_path)
     row = read_rows(out)[0]
@@ -508,6 +516,7 @@ def test_every_site_reason_code(tmp_path, site, reason):
     websites = {} if site is None else {"p1": "https://site1.example/"}
     _, auto, queue, _ = candidate_run(tmp_path, {"SAMPLE COOLING LLC": ["p1"]}, websites, {"https://site1.example/": site})
     assert auto == [] and queue[0]["reason"] == reason
+    assert queue[0]["identity_label"] == {"no_tel_phone": "verified", "robots_blocked": "unverified"}.get(reason, "unresolved")
     assert queue[0]["website_url"] == ("https://site1.example/" if reason == "no_tel_phone" else "")
 
 

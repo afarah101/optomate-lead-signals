@@ -12,12 +12,14 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from leads.identity_label import VERIFIED, identity_label
 from leads.place_match import PlacesUnavailable, fetch_website_live, find_place_candidates, shares_main_words
 from leads.website_contacts import SiteUnreadable, read_own_site_contacts
 from signals.lookup_sheet import LOOKUP_COLUMNS
 
-AUTO_COLUMNS = LOOKUP_COLUMNS + ["place_id"]
-QUEUE_COLUMNS = ["licence_number", "business_name", "county", "place_id", "reason", "website_url", "form_url"]
+AUTO_COLUMNS = LOOKUP_COLUMNS + ["place_id", "identity_label"]
+QUEUE_COLUMNS = ["licence_number", "business_name", "county", "place_id", "reason", "website_url", "form_url",
+                 "identity_label"]
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 PLACES_BUDGET = 300
 
@@ -49,7 +51,8 @@ def autofill_lookup(call_list_csv, out_csv, queue_csv, find_candidates=find_plac
             reasons[reason] += 1
             queue.writerow({"licence_number": business["licence_number"], "business_name": business["business_name"],
                             "county": business["county"], "place_id": place_id, "reason": reason,
-                            "website_url": website_url, "form_url": form_url})
+                            "website_url": website_url, "form_url": form_url,
+                            "identity_label": identity_label(reason)})
             print(f"{business['licence_number']}: manual queue ({reason})", flush=True)
 
         try:
@@ -101,7 +104,7 @@ def autofill_lookup(call_list_csv, out_csv, queue_csv, find_candidates=find_plac
                     "website_url": site["website_url"], "business_phone": site["phone"],
                     "phone_source_url": site["phone_source_url"], "form_url": site["form_url"],
                     "lookup_date": lookup_date, "lookup_initials": "auto", "place_id": place_id,
-                    "notes": f"auto: site found via Google Places live; match_by={match_by}",
+                    "notes": f"auto: site found via Google Places live; match_by={match_by}", "identity_label": VERIFIED,
                 })
                 filled[match_by] += 1
                 print(f"{licence}: auto-filled (match_by={match_by})", flush=True)

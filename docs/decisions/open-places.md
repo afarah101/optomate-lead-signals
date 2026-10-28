@@ -69,6 +69,7 @@ honest User-Agent, no emails, phones only from `tel:` links or schema.org markup
 | `licence_number`, `business_name`, `county` | From the v3 queue |
 | `outcome` | `confirmed`, or the reason nothing was confirmed: `no_match` (no record passed name + ZIP), `no_website` (matches, none with a website), or the reader's reason for the first site tried (`name_mismatch`, `robots_blocked`, `fetch_failed`, `redirect_off_site`), or `no_tel_phone` (site confirmed, no phone) |
 | `match_by` | `licence` or `name`, for a confirmed site |
+| `identity_label` | `verified` (`confirmed`, `no_tel_phone`), `unverified` (`robots_blocked`) or `unresolved` (every other outcome), per `src/leads/identity_label.py` and the rule logged 2026-10-28 in `lookup-automation.md`. Only `verified` rows go to outreach |
 | `matched_records`, `records_with_website` | Counts for the measurement |
 | `source_record_id` | The Overture `id` of the record whose website was confirmed |
 | `source_datasets` | That record's upstream datasets (for attribution) |
@@ -89,3 +90,12 @@ never even selected. The v1–v4 lookup and queue files are inputs or untouched;
 Reading S3 needs DuckDB's `httpfs` extension. DuckDB downloads the signed extension once from its own extension
 repository into `~/.duckdb/extensions/`, and unsigned extensions stay disabled (`allow_unsigned_extensions=false`).
 To remove it: delete `~/.duckdb/`.
+
+## Rule changes
+
+### 2026-10-28: Identity label column (before the code)
+
+`identity_label` is added to the output, with the same rule as the lookup (`lookup-automation.md`, 2026-10-28):
+`confirmed` and `no_tel_phone` are `verified`; `robots_blocked` is `unverified`; `no_match`, `no_website`,
+`name_mismatch`, `fetch_failed` and `redirect_off_site` are `unresolved`. The existing
+`2026-11_open_places_test.csv` isn't relabelled.

@@ -11,6 +11,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from leads.identity_label import identity_label
 from leads.place_match import _main_word_stems, shares_main_words
 from leads.website_contacts import SiteUnreadable, read_own_site_contacts
 
@@ -22,7 +23,7 @@ DFW_ZIP = re.compile(r"7[56]\d{3}(-\d{4})?")
 TEXAS_REGIONS = {"TX", "TEXAS"}
 MAX_SITES_PER_BUSINESS = 5
 QUEUE_INPUT_COLUMNS = ("licence_number", "business_name", "county")  # the queue has no licence holder column
-OUT_COLUMNS = ["licence_number", "business_name", "county", "outcome", "match_by", "matched_records",
+OUT_COLUMNS = ["licence_number", "business_name", "county", "outcome", "identity_label", "match_by", "matched_records",
                "records_with_website", "source_record_id", "source_datasets", "website_url", "business_phone",
                "phone_source_url", "form_url", "lookup_date"]
 
@@ -109,7 +110,7 @@ def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], read_s
         raise FileExistsError(f"{out_csv} already exists; it is never overwritten")
     businesses = load_queued_businesses(queue_csv)
     index, lookup_date = build_name_index(records), (today or date.today()).isoformat()
-    outcomes, match_by = Counter(), Counter()
+    outcomes, match_by, labels = Counter(), Counter(), Counter()
     totals = Counter()
     with out_csv.open("x", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=OUT_COLUMNS)
@@ -117,8 +118,11 @@ def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], read_s
         for business in businesses:
             matched = matching_records(business["business_name"], records, index)
             result = confirm_on_own_site(business, matched, read_site)
-            writer.writerow({column: "" for column in OUT_COLUMNS} | business | result | {"lookup_date": lookup_date})
+            label = identity_label(result["outcome"])
+            writer.writerow({column: "" for column in OUT_COLUMNS} | business | result
+                            | {"identity_label": label, "lookup_date": lookup_date})
             outcomes[result["outcome"]] += 1
+            labels[label] += 1
             if result.get("match_by"):
                 match_by[result["match_by"]] += 1
             totals["businesses_matched"] += bool(matched)
@@ -127,7 +131,7 @@ def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], read_s
             totals["records_with_website"] += result["records_with_website"]
             totals["new_phones"] += bool(result.get("business_phone"))
             print(f"{business['licence_number']}: {result['outcome']}", flush=True)
-    return {"businesses": len(businesses), **totals, "outcomes": dict(outcomes),
+    return {"businesses": len(businesses), **totals, "outcomes": dict(outcomes), "identity_labels": dict(labels),
             "confirmed_on_own_site": sum(match_by.values()), "match_by": dict(match_by), "output": str(out_csv)}
 
 
