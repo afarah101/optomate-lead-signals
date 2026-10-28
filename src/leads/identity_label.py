@@ -10,6 +10,7 @@ _LABEL_BY_OUTCOME = {
     "no_tel_phone": VERIFIED,  # site confirmed, no phone
     "robots_blocked": UNVERIFIED,
     **dict.fromkeys(["name_mismatch", "fetch_failed", "redirect_off_site"], UNRESOLVED),  # site tried, not settled
+    **dict.fromkeys(["licence_name_mismatch", "many_licences", "licence_on_many_sites"], UNRESOLVED),  # reverse lookup
     **dict.fromkeys(["no_place_none", "no_place_zip", "no_place_texas", "no_website", "no_match", "places_budget"],
                     UNRESOLVED),  # no candidate to check
 }

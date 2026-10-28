@@ -19,6 +19,7 @@ LEADS = Path(__file__).resolve().parents[1] / "src" / "leads"
     ("name_mismatch", UNRESOLVED), ("fetch_failed", UNRESOLVED), ("redirect_off_site", UNRESOLVED),
     ("no_place_none", UNRESOLVED), ("no_place_zip", UNRESOLVED), ("no_place_texas", UNRESOLVED),
     ("no_website", UNRESOLVED), ("no_match", UNRESOLVED), ("places_budget", UNRESOLVED),
+    ("licence_name_mismatch", UNRESOLVED), ("many_licences", UNRESOLVED), ("licence_on_many_sites", UNRESOLVED),
 ])
 def test_label_per_context_md(outcome, label):
     assert identity_label(outcome) == label
@@ -40,7 +41,8 @@ def test_every_reason_the_code_emits_has_a_label():
     source = "\n".join(p.read_text() for p in LEADS.glob("*.py") if p.name != "identity_label.py")
     emitted = set(re.findall(r'SiteUnreadable\("(\w+)"', source))
     emitted |= set(re.findall(r'outcomes\.append\(\(\w+, "(\w+)"', source))
-    emitted |= set(re.findall(r'"(no_place_\w+|no_match|no_website|confirmed|no_tel_phone|name_mismatch)"', source))
-    assert {"robots_blocked", "fetch_failed", "redirect_off_site", "places_budget", "no_place_none"} <= emitted
+    emitted |= set(re.findall(r'"(no_place_\w+|no_match|no_website|confirmed|no_tel_phone|name_mismatch|licence_name_mismatch|many_licences|licence_on_many_sites)"', source))
+    assert {"robots_blocked", "fetch_failed", "redirect_off_site", "places_budget", "no_place_none",
+            "licence_name_mismatch", "many_licences", "licence_on_many_sites"} <= emitted
     for outcome in emitted:
         identity_label(outcome)  # raises if a reason has no label

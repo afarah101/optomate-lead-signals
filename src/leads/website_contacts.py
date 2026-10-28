@@ -200,17 +200,18 @@ def _visible_text(markup: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", markup))).upper()
 
 
-def site_shows_licence_number(page_html: str, licence_number: str | None) -> bool:
+def licence_numbers_shown(page_html: str) -> set[str]:
     # Real sites write e.g. TACLB00012345E (see lookup-automation.md); only the TACLA/TACLB prefix counts.
-    wanted = (licence_number or "").strip().lstrip("0")
-    if not wanted.isdigit():
-        return False
-    text = _visible_text(page_html)
+    text, numbers = _visible_text(page_html), set()
     for prefix in re.finditer(r"TACL[\s-]?[AB]", text):
         after = text[prefix.end():prefix.end() + 40]
-        if any(run.start() <= 20 and run.group().lstrip("0") == wanted for run in re.finditer(r"\d+", after)):
-            return True
-    return False
+        numbers |= {run.group().lstrip("0") for run in re.finditer(r"\d+", after) if run.start() <= 20}
+    return numbers - {""}
+
+
+def site_shows_licence_number(page_html: str, licence_number: str | None) -> bool:
+    wanted = (licence_number or "").strip().lstrip("0")
+    return wanted.isdigit() and wanted in licence_numbers_shown(page_html)
 
 
 def _is_html_ok(response: Response) -> bool:
@@ -230,21 +231,22 @@ def read_own_site_contacts(url: str, get=None, licence_number: str | None = None
     if not _is_html_ok(home):
         raise SiteUnreadable("fetch_failed", f"homepage HTTP {home.status}")
     page = _read_page(home)
+    numbers = licence_numbers_shown(home.text)
     contacts = {"website_url": home.url, "site_name": page["site_name"], "phone": page["phone"],
-                "phone_source_url": home.url if page["phone"] else "", "form_url": "",
-                "licence_shown": site_shows_licence_number(home.text, licence_number)}
+                "phone_source_url": home.url if page["phone"] else "", "form_url": ""}
 
     link = page["contact_link"]
     if link and robots.can_fetch(ROBOTS_TOKEN, link):
         try:
             contact = get(link)  # page 2 of 2; nothing else is ever fetched
         except SiteUnreadable:
-            return contacts
-        if _is_html_ok(contact):
+            contact = None
+        if contact and _is_html_ok(contact):
             contact_page = _read_page(contact)
             if contact_page["has_message_form"]:
                 contacts["form_url"] = contact.url
             if not contacts["phone"] and contact_page["phone"]:
                 contacts.update(phone=contact_page["phone"], phone_source_url=contact.url)
-            contacts["licence_shown"] = contacts["licence_shown"] or site_shows_licence_number(contact.text, licence_number)
-    return contacts
+            numbers |= licence_numbers_shown(contact.text)
+    wanted = (licence_number or "").strip().lstrip("0")
+    return contacts | {"licence_shown": wanted.isdigit() and wanted in numbers, "licence_numbers": sorted(numbers)}

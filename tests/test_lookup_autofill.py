@@ -17,7 +17,8 @@ from leads.place_match import (
 )
 from leads import website_contacts
 from leads.website_contacts import (
-    Response, SiteUnreadable, Throttle, http_get, read_own_site_contacts, same_site, site_shows_licence_number, us_phone,
+    Response, SiteUnreadable, Throttle, http_get, licence_numbers_shown, read_own_site_contacts, same_site,
+    site_shows_licence_number, us_phone,
 )
 from signals.lookup_sheet import check_lookup_sheet
 
@@ -75,7 +76,7 @@ def test_text_phone_is_ignored():
 def test_email_is_never_collected():
     contacts = read_own_site_contacts(SITE, get=sample_site())
     assert "office@" not in json.dumps(contacts) and set(contacts) == {
-        "website_url", "site_name", "phone", "phone_source_url", "form_url", "licence_shown"}
+        "website_url", "site_name", "phone", "phone_source_url", "form_url", "licence_shown", "licence_numbers"}
 
 
 def test_schema_org_telephone_is_preferred_but_never_from_a_person():
@@ -285,6 +286,26 @@ def test_reader_reports_licence_from_either_page():
     web = sample_site(**{"https://www.sample-cooling.example/contact-us": page("<p>TACLB00012345E</p>" + CONTACT)})
     assert read_own_site_contacts(SITE, get=web, licence_number="12345")["licence_shown"] is True
     assert read_own_site_contacts(SITE, get=sample_site(), licence_number="12345")["licence_shown"] is False
+
+
+@pytest.mark.parametrize("markup, numbers", [
+    ("<footer>TDLR TACLB00012345E</footer>", {"12345"}),                       # leading zeros dropped
+    ("<p>TACLA 99999C and 12345</p>", {"99999", "12345"}),                     # every run within 20 characters
+    ("<p>TACLA see our office for details 12345</p>", set()),                  # beyond 20 characters
+    ("<p>TACLA12345C</p><p>TACL-B 0067890E</p>", {"12345", "67890"}),          # two prefixes
+    ("<p>TACLA 0000E</p>", set()),                                             # all zeros is no number
+    ("<p>License #12345, TACL 54321</p>", set()),                              # no TACLA/TACLB prefix
+    ("<script>var l='TACLA12345C'</script>", set()),                           # visible text only
+])
+def test_licence_numbers_shown(markup, numbers):
+    assert licence_numbers_shown(markup) == numbers
+
+
+def test_reader_returns_licence_numbers_from_both_pages():
+    web = sample_site(**{SITE: HOME.replace("</footer>", "TACLA0099999C</footer>"),
+                         "https://www.sample-cooling.example/contact-us": page("<p>TACLB00012345E</p>" + CONTACT)})
+    contacts = read_own_site_contacts(SITE, get=web)
+    assert contacts["licence_numbers"] == ["12345", "99999"] and contacts["licence_shown"] is False
 
 
 # --- Places adapter --------------------------------------------------------------------------------------------
