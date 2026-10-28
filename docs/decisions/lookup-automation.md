@@ -112,3 +112,47 @@ businesses, which is the evidence needed before changing the address rule.
 |---|---|---|---|
 | User-Agent | `OptomateResearch/0.1 (research contact: see README)` | `OptomateResearch/0.1 (research contact: ops@optomate.co.uk)` | The README is in a private repo, so a site owner reading their server logs couldn't reach it. The address now travels with every request. |
 | Queue reason for a Places miss | `no_place`, written by `lookup_autofill.py` | The failed test: `no_place_none`, `no_place_name`, `no_place_zip`, `no_place_texas` | The v2 run needed a separate runner to record these. They are now written by the module itself, so every future run records them. |
+
+### 2026-10-27: Accept a site by licence number (before v3, before the code)
+
+| | Old rule | New rule |
+|---|---|---|
+| Accepting a site | The site name carries every main word of the licence `business_name` | **Either** that name rule passes, **or** the site shows the business's own TDLR licence number |
+| Places | One result, picked by the 70% name share | **Up to 3 candidates** whose address passes the Texas + ZIP rule (unchanged), tried in order on the business's own site. Candidates that pass the 70% name share go first |
+
+**Legal source.** 16 TAC §75.71 ("Responsibilities of the Contracting Company"), subsection (h): all advertising by
+air conditioning and refrigeration contracting companies "designed to solicit air conditioning or refrigeration
+business must include the affiliated licensee's license number." Checked on 2026-10-27 in the Cornell LII copy of the
+Texas Administrative Code.
+
+**Limits.**
+- Not every site shows the number. §75.71(h) says "all advertising" and lists exemptions, but doesn't name websites,
+  and compliance is uneven.
+- The rule requires the *affiliated licensee's* number. A company can show a different licensee's number from the one
+  in our TDLR row. That's a non-match, and the name rule still applies.
+- The rule sets no format. How sites write the number is **unverified until it is checked on real sites** (next
+  entry), and the matcher is set from that evidence.
+- The reader still reads only the homepage and one contact page, so a number shown only on another page isn't seen.
+
+### 2026-10-27: Licence format on real sites (evidence for the matcher)
+
+The homepages of the first 10 v2 auto-filled sites, by licence number, were read once each (robots.txt obeyed,
+same User-Agent and throttle, no Places calls; page text held in memory only, nothing stored):
+
+| What the homepage shows | Sites |
+|---|---|
+| Its own licence: `TACLA` or `TACLB` + 0 to 3 leading zeros + the licence digits + `C` or `E` (for example `TACLB00012345E`) | 6 (one of them also shows a second licensee's TACL number) |
+| A `TACT` token with a different number | 1 |
+| No licence number on the homepage | 3 |
+| The licence digits without the `TACL` prefix | 0 |
+
+**Matcher (set from this evidence, unchanged from the brief):** `site_shows_licence_number()` is true only when a run
+of digits starting within 20 characters after `TACL`, read in the page's visible text with leading zeros ignored, is
+exactly the licence number. Digits without the `TACL` prefix never count, and a longer or shorter number containing the
+licence digits doesn't count either.
+
+**Queue reasons in v3:** `no_place_name` is retired. Candidates are no longer filtered by Google's name; the name is
+judged on the business's own site (`name_mismatch`). A business keeps the reason of its first candidate, unless a
+later candidate's site was confirmed but had no phone (`no_tel_phone`), which is kept instead because that site is the
+business. `places_budget` is new: a candidate wasn't tried because the run's Places budget (300 calls) had to stay
+free for the businesses still to be searched.

@@ -89,24 +89,22 @@ def _places_request(url: str, api_key: str, field_mask: str, body: dict | None =
         raise PlacesUnavailable(f"Places API unreachable: {getattr(e, 'reason', e)}") from None
 
 
-def find_place(name: str, county: str, api_key: str | None = None, request=_places_request) -> tuple[str | None, str]:
-    """Returns (place_id, "") or (None, the queue reason naming which test failed)."""
+def find_place_candidates(name: str, county: str, limit: int = 3, api_key: str | None = None,
+                          request=_places_request) -> tuple[list[str], str]:
+    """Returns (up to `limit` place IDs with a Texas + ZIP address, "") or ([], the queue reason).
+
+    Google's name only orders the candidates (70% share first); the business's own site decides identity.
+    """
     places = request(SEARCH_URL, api_key or load_api_key(), SEARCH_FIELDS,
                      {"textQuery": f"{name} {county} County TX", "regionCode": "US"}).get("places", [])
     if not places:
-        return None, "no_place_none"
-    named = [p for p in places if name_matches_place(name, p.get("displayName", {}).get("text"))]
-    if not named:
-        return None, "no_place_name"
-    addresses = [p.get("formattedAddress", "") for p in named]
-    for place, address in zip(named, addresses):
-        if TEXAS_ADDRESS.search(address):
-            return place.get("id"), ""
-    return None, "no_place_zip" if any(TEXAS_WITHOUT_ZIP.search(a) for a in addresses) else "no_place_texas"
-
-
-def find_place_id(name: str, county: str, api_key: str | None = None, request=_places_request) -> str | None:
-    return find_place(name, county, api_key, request)[0]
+        return [], "no_place_none"
+    in_texas = [p for p in places if TEXAS_ADDRESS.search(p.get("formattedAddress", "")) and p.get("id")]
+    if not in_texas:
+        no_zip = any(TEXAS_WITHOUT_ZIP.search(p.get("formattedAddress", "")) for p in places)
+        return [], "no_place_zip" if no_zip else "no_place_texas"
+    in_texas.sort(key=lambda p: not name_matches_place(name, p.get("displayName", {}).get("text")))  # stable
+    return [p["id"] for p in in_texas[:limit]], ""
 
 
 def fetch_website_live(place_id: str, api_key: str | None = None, request=_places_request) -> str | None:

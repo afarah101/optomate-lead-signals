@@ -4,6 +4,7 @@ At most 2 pages (homepage + one contact page), robots.txt obeyed, honest User-Ag
 no retries. Reads a phone only from tel: links or schema.org JSON-LD telephone, never from text. Never reads emails.
 """
 
+import html
 import json
 import re
 import time
@@ -194,11 +195,29 @@ def _read_page(response: Response) -> dict:
     }
 
 
+def _visible_text(markup: str) -> str:
+    markup = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", markup)
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", markup))).upper()
+
+
+def site_shows_licence_number(page_html: str, licence_number: str | None) -> bool:
+    # Real sites write e.g. TACLB00012345E (see lookup-automation.md); bare digits never count.
+    wanted = (licence_number or "").strip().lstrip("0")
+    if not wanted.isdigit():
+        return False
+    text = _visible_text(page_html)
+    for prefix in re.finditer(r"TACL", text):
+        after = text[prefix.end():prefix.end() + 40]
+        if any(run.start() <= 20 and run.group().lstrip("0") == wanted for run in re.finditer(r"\d+", after)):
+            return True
+    return False
+
+
 def _is_html_ok(response: Response) -> bool:
     return response.status == 200 and response.content_type in ("text/html", "application/xhtml+xml")
 
 
-def read_own_site_contacts(url: str, get=None) -> dict:
+def read_own_site_contacts(url: str, get=None, licence_number: str | None = None) -> dict:
     get = get or http_get
     url = urlsplit(url)._replace(query="", fragment="").geturl()  # drop tracking parameters from Google's link
     if urlsplit(url).scheme not in ("http", "https"):
@@ -212,7 +231,8 @@ def read_own_site_contacts(url: str, get=None) -> dict:
         raise SiteUnreadable("fetch_failed", f"homepage HTTP {home.status}")
     page = _read_page(home)
     contacts = {"website_url": home.url, "site_name": page["site_name"], "phone": page["phone"],
-                "phone_source_url": home.url if page["phone"] else "", "form_url": ""}
+                "phone_source_url": home.url if page["phone"] else "", "form_url": "",
+                "licence_shown": site_shows_licence_number(home.text, licence_number)}
 
     link = page["contact_link"]
     if link and robots.can_fetch(ROBOTS_TOKEN, link):
@@ -226,4 +246,5 @@ def read_own_site_contacts(url: str, get=None) -> dict:
                 contacts["form_url"] = contact.url
             if not contacts["phone"] and contact_page["phone"]:
                 contacts.update(phone=contact_page["phone"], phone_source_url=contact.url)
+            contacts["licence_shown"] = contacts["licence_shown"] or site_shows_licence_number(contact.text, licence_number)
     return contacts
