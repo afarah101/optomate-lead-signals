@@ -187,3 +187,19 @@ confirmed. The run stopped when the Place Details cap was reached at 300 calls (
 kept their v3 queue rows. The outputs are `2026-11_lookup_auto_v4.csv` and `2026-11_manual_queue_v4.csv`. **Experiment
 closed:** the v4 code was reverted, so the queries, candidate count and budgets above are not in the code. The 80
 businesses go to the manual lookup.
+
+### 2026-10-28: Licence prefix TACLA or TACLB only (before the code)
+
+| | Old rule | New rule |
+|---|---|---|
+| Licence prefix | Any `TACL` (so `TACLC…` or a bare `TACL 12345` also counted) | **`TACLA` or `TACLB` only**, with an optional hyphen or space before the letter (`TACL-A`, `TACL B`), as the regex `TACL[\s-]?[AB]` |
+| Digits | A run starting within 20 characters after `TACL`, leading zeros ignored, exact match | **Unchanged**, counted from after the `A` or `B` |
+
+**Why.** The licence-format evidence above found every site that showed its own licence writing `TACLA` or `TACLB`
+(6 of 10). A bare `TACL` isn't a licence prefix, so it shouldn't confirm identity. The hyphen or space variant is the
+same prefix with different punctuation (decided in chat, 28 Oct 2026).
+
+**Risk, not checkable offline.** 15 of the 20 v3 auto-filled rows were confirmed by licence. No page text is stored,
+only `match_by=licence` in `notes` (0 of the 15 rows contain any `TACL` text), so it isn't known whether any of them
+matched on a prefix the new rule rejects. Those rows stay as they are. The next run that re-reads those sites
+applies the new rule, and any site that now fails falls back to the site-name check, or else to `name_mismatch`.

@@ -263,10 +263,14 @@ def test_texas_without_zip_is_named_but_not_a_candidate():
 @pytest.mark.parametrize("markup, licence, expected", [
     ("<footer>TDLR TACLB00012345E</footer>", "12345", True),                       # TACL prefix, leading zeros
     ("<p>TACLA12345C</p>", "0012345", True),                                       # zeros on our side ignored too
-    ("<p>TACL-A #00012345 E</p>", "12345", True),
+    ("<p>TACL-A #00012345 E</p>", "12345", True),                                  # hyphen before the letter
+    ("<p>TACL B 00012345E</p>", "12345", True),                                    # space before the letter
     ("<p>TACLA<span>00012345</span>E</p>", "12345", True),                         # split by markup
     ("<p>License #12345</p>", "12345", False),                                     # digits without the prefix
     ("<p>TACT 12345E</p>", "12345", False),
+    ("<p>TACL 00012345E</p>", "12345", False),                                     # bare TACL is not a prefix
+    ("<p>TACLC00012345E</p>", "12345", False),                                     # only A or B
+    ("<p>TACL--A 12345E</p>", "12345", False),                                     # one separator at most
     ("<p>TACLA123456E</p>", "12345", False),                                       # a longer number is not ours
     ("<p>TACLA 99999C and 12345</p>", "12345", True),                              # within 20 characters
     ("<p>TACLA see our office for details 12345</p>", "12345", False),             # beyond 20 characters

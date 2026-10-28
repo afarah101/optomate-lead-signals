@@ -201,12 +201,12 @@ def _visible_text(markup: str) -> str:
 
 
 def site_shows_licence_number(page_html: str, licence_number: str | None) -> bool:
-    # Real sites write e.g. TACLB00012345E (see lookup-automation.md); bare digits never count.
+    # Real sites write e.g. TACLB00012345E (see lookup-automation.md); only the TACLA/TACLB prefix counts.
     wanted = (licence_number or "").strip().lstrip("0")
     if not wanted.isdigit():
         return False
     text = _visible_text(page_html)
-    for prefix in re.finditer(r"TACL", text):
+    for prefix in re.finditer(r"TACL[\s-]?[AB]", text):
         after = text[prefix.end():prefix.end() + 40]
         if any(run.start() <= 20 and run.group().lstrip("0") == wanted for run in re.finditer(r"\d+", after)):
             return True
