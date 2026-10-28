@@ -156,3 +156,34 @@ judged on the business's own site (`name_mismatch`). A business keeps the reason
 later candidate's site was confirmed but had no phone (`no_tel_phone`), which is kept instead because that site is the
 business. `places_budget` is new: a candidate wasn't tried because the run's Places budget (300 calls) had to stay
 free for the businesses still to be searched.
+
+### 2026-10-28: Wider searches for the v3 queue (before v4, before the code)
+
+Applies to a re-run of the 80 businesses in `2026-11_manual_queue_v3.csv` only.
+
+| | Old rule | New rule |
+|---|---|---|
+| Candidates per query | 3 | **5** (Texas + ZIP rule unchanged) |
+| Queries | 1: `<business_name> <county> County TX` | Tried in this order, each **only if the earlier ones found no confirmed site**: **1** the original query; **2** the name without trade words (AIR, HEATING, COOLING, CONDITIONING, HVAC, MECHANICAL, SERVICES, singular or plural, plus the entity words LLC, INC, CO, CORP, CORPORATION, INCORPORATED, LTD, LP, LLP and THE, AND, OF) + `<county> County TX`; **3** `<business_name> <county> TX`; **4** `<licence holder name> air conditioning <county> TX` |
+| Identity | Licence number or site name on the business's own site | **Unchanged.** A site is confirmed only on the business's own site, by the TACL licence number or the existing site-name rule. A wider search only finds more candidates; it never confirms one |
+
+**Details:**
+- Query 2 is skipped when removing the trade words leaves nothing, or leaves the name unchanged. A query identical
+  to an earlier one is skipped.
+- Query 1 was already run in v3 with 3 candidates, so here it only adds candidates 4 and 5. Its first 3, and the
+  place_id recorded in the v3 queue, count as already tried. **A place_id already tried for a business is never
+  fetched again** for that business.
+- **The licence holder name is personal data.** It is read from `data/leads/tdlr_hvac_dfw.csv` (`licence_holder`, as
+  "LAST, FIRST M", sent as "FIRST M LAST") and used only as a live Text Search query. It is never stored, printed or
+  logged. Notes record only the query number (`query_used=4`), never the query text.
+- **Budgets, counted separately:** at most 600 Text Search calls and 300 Place Details calls. If either cap would be
+  passed, the run stops calling Google, and every business not finished keeps its v3 queue row unchanged.
+- **Merge:** `2026-11_lookup_auto_v4.csv` = every v3 auto row unchanged + the newly confirmed rows.
+  `2026-11_manual_queue_v4.csv` = the rest, each with the reason from this re-run (a confirmed site without a phone
+  is kept first, otherwise the first candidate's reason, otherwise the last query's `no_place_*` reason).
+
+**Result (2026-10-28).** Wider searches were tried on 43 of the 80 queued businesses, and 0 new businesses were
+confirmed. The run stopped when the Place Details cap was reached at 300 calls (Text Search: 175 of 600). The other 37
+kept their v3 queue rows. The outputs are `2026-11_lookup_auto_v4.csv` and `2026-11_manual_queue_v4.csv`. **Experiment
+closed:** the v4 code was reverted, so the queries, candidate count and budgets above are not in the code. The 80
+businesses go to the manual lookup.
