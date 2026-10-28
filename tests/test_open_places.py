@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from leads import open_places
 from leads.open_places import (
-    OUT_COLUMNS, build_name_index, confirm_on_own_site, in_business_county, load_queued_businesses, matching_records,
+    OUT_COLUMNS, build_name_index, confirm_on_own_site, in_business_county, in_texas, load_queued_businesses,
+    matching_records,
     measure_open_places_recovery,
 )
 from leads.place_match import shares_main_words
@@ -21,8 +22,9 @@ from leads.website_contacts import Response, SiteUnreadable, read_own_site_conta
 
 SITE = "https://www.sample-cooling.example/"
 QUEUE_COLUMNS = ["licence_number", "business_name", "county", "place_id", "reason", "website_url", "form_url"]
-# SAMPLE ZCTA -> county FIPS links: 75201 Dallas only, 76132 Tarrant only, 75007 Dallas/Denton/Collin
-ZCTA = {"75201": {"48113"}, "76132": {"48439"}, "75007": {"48113", "48121", "48085"}}
+# SAMPLE ZCTA -> county FIPS links: 75201 Dallas, 76132 Tarrant, 75007 Dallas/Denton/Collin, 75401 Hunt, 74103 Tulsa OK
+ZCTA = {"75201": {"48113"}, "76132": {"48439"}, "75007": {"48113", "48121", "48085"}, "75401": {"48231"},
+        "74103": {"40143"}}
 
 
 def record(name, website=SITE, postcode="75201", region="TX", confidence=0.9, id_="ovt-1", datasets=("meta",)):
@@ -53,7 +55,7 @@ def test_name_normalisation_matches_the_existing_main_words_rule():
     records = [record("Sample Cooling"), record("S.A.M.P.L.E. Coolings & Co"), record("Sample Plumbing")]
     index = build_name_index(records)
     # dots removed, & and Co dropped, plural = singular
-    assert [r["name"] for r in matching_records("SAMPLE COOLING, LLC", "Dallas", records, index, ZCTA)] == [
+    assert [r["name"] for r in matching_records("SAMPLE COOLING, LLC", records, index, ZCTA)] == [
         "Sample Cooling", "S.A.M.P.L.E. Coolings & Co"]
 
 
@@ -63,10 +65,18 @@ def test_matching_is_the_same_test_as_shares_main_words():
     index = build_name_index(records)
     for licence_name in ["SAMPLE COOLING LLC", "SAMPLE LLC", "SAMPLE HEATING AND COOLING", "LLC"]:
         expected = [r["name"] for r in records if shares_main_words(licence_name, r["name"])]
-        assert [r["name"] for r in matching_records(licence_name, "Dallas", records, index, ZCTA)] == expected
+        assert [r["name"] for r in matching_records(licence_name, records, index, ZCTA)] == expected
 
 
-# ZIP in the business's county
+# ZIP: any Texas county filters; the business's own county is only recorded
+
+@pytest.mark.parametrize("postcode,ok", [
+    ("75201", True), ("76132-1234", True), ("75401", True),          # DFW, DFW with ZIP+4, Hunt County (Texas)
+    ("74103", False), (None, False), ("", False), ("7520", False),   # Oklahoma, missing, malformed
+])
+def test_record_zip_must_be_in_a_texas_county(postcode, ok):
+    assert in_texas(record("Sample Cooling", postcode=postcode), ZCTA) is ok
+
 
 @pytest.mark.parametrize("county,postcode,ok", [
     ("Dallas", "75201", True), ("DALLAS", "75201-1234", True),       # ZIP+4 trimmed; county case ignored
@@ -74,14 +84,24 @@ def test_matching_is_the_same_test_as_shares_main_words():
     ("Denton", "75007", True), ("Collin", "75007", True),            # multi-county ZIP, each county
     ("Dallas", None, False), ("Dallas", "", False), ("Dallas", "73460", False),
 ])
-def test_record_zip_must_be_in_the_business_county(county, postcode, ok):
+def test_business_county_check_used_for_the_record_flag(county, postcode, ok):
     assert in_business_county(record("Sample Cooling", postcode=postcode), county, ZCTA) is ok
 
 
-def test_a_name_match_outside_the_business_county_is_not_matched():
-    records = [record("Sample Cooling", postcode="76132")]
-    assert matching_records("SAMPLE COOLING LLC", "Dallas", records, build_name_index(records), ZCTA) == []
-    assert matching_records("SAMPLE COOLING LLC", "Tarrant", records, build_name_index(records), ZCTA) == records
+def test_a_name_match_in_another_texas_county_is_a_candidate_but_not_outside_texas():
+    records = [record("Sample Cooling", postcode="75401"), record("Sample Cooling", postcode="74103", id_="ovt-ok")]
+    assert matching_records("SAMPLE COOLING LLC", records, build_name_index(records), ZCTA) == records[:1]
+
+
+@pytest.mark.parametrize("postcode, flag", [("75201", "yes"), ("75401", "no")])
+def test_zip_county_match_is_recorded_and_never_filters(tmp_path, postcode, flag):
+    queue = _queue_file(tmp_path, [BUSINESS])  # TDLR county DALLAS
+    out = tmp_path / "out.csv"
+    summary = measure_open_places_recovery(queue, out, [record("Sample Cooling", postcode=postcode)], ZCTA,
+                                           reader({SITE: html("Sample Cooling", PHONE_LINK)}))
+    row = next(csv.DictReader(out.open()))
+    assert (row["outcome"], row["identity_label"], row["zip_county_match"]) == ("confirmed", "verified", flag)
+    assert summary["identity_labels"] == {"verified": 1}
 
 
 # The existing own-site check is required
@@ -174,6 +194,7 @@ def test_measurement_writes_only_its_own_file_and_never_overwrites(tmp_path):
     assert list(rows[0]) == OUT_COLUMNS and len(rows) == 2
     assert rows[0]["website_url"] == SITE and rows[0]["lookup_date"] == "2026-10-28"
     assert rows[1]["outcome"] == "no_match" and rows[1]["website_url"] == ""
+    assert [r["zip_county_match"] for r in rows] == ["yes", ""]  # empty when nothing was confirmed
     assert [r["identity_label"] for r in rows] == ["verified", "unresolved"]
     assert summary["identity_labels"] == {"verified": 1, "unresolved": 1}
     assert summary["confirmed_on_own_site"] == 1 and summary["new_phones"] == 1

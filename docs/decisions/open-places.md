@@ -128,3 +128,30 @@ Ellis 48139, Johnson 48251, Kaufman 48257, Parker 48367, Rockwall 48397, Tarrant
   ZCTA, so a record with one of those ZIPs doesn't match.
 - A ZIP that crosses a county line matches each county it touches. The own-site check still decides identity.
 - The region (`TX`) test is dropped, because a ZCTA linked to a Texas county FIPS (`48…`) is in Texas.
+
+**Result of the strict county rule (2026-10-28).** It was re-run to `data/leads/2026-11_open_places_test_v2.csv`, with
+the same 80 businesses and the same Overture release:
+- verified fell from **6 to 4** (licence 4 → 3, name 2 → 1), and phones from 3 to 1;
+- `no_match` rose from 59 to 65;
+- no business gained a confirmation.
+
+Two businesses that their own sites had already confirmed were lost:
+
+| Licence | TDLR county | County of the Overture ZIP (Census file) | Confirmed before by |
+|---|---|---|---|
+| 168761 | Collin | Tarrant | site name |
+| 116548 | Rockwall | Hunt (48231), outside the 9 DFW counties | TACL licence number |
+
+The TDLR `business_county` doesn't always match where the business trades. The own-site check was already rejecting
+the wrong businesses; the county rule rejected right ones.
+
+### 2026-10-28: ZIP in any Texas county; county match recorded, not filtered (before the code)
+
+| | Old rule | New rule |
+|---|---|---|
+| Candidate filter | The record's ZIP is in the business's TDLR county | The record's ZIP (5 digits, ZIP+4 trimmed) is in **any Texas county**: the Census file links its ZCTA to a county FIPS starting `48`, with `AREALAND_PART > 0` |
+| County match | Was the filter | **Recorded only**, as the new column `zip_county_match` = `yes` / `no`: is the confirmed record's ZIP in the TDLR county? Empty when no site was confirmed. Never filters |
+| Identity | Own site only (licence number or strict site name) | **Unchanged.** The own site is the only judge |
+
+The DFW bounding box is still a pre-filter on the Overture read, so "any Texas county" in practice means Texas ZIPs
+inside the box.

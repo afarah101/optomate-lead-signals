@@ -13,7 +13,7 @@ from pathlib import Path
 from leads.identity_label import identity_label
 from leads.place_match import _main_word_stems, shares_main_words
 from leads.website_contacts import SiteUnreadable, read_own_site_contacts
-from leads.zip_county import load_zcta_counties, zip_in_county
+from leads.zip_county import load_zcta_counties, zip_in_county, zip_in_texas
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 OVERTURE_RELEASE = "2026-10-21.0"
@@ -22,7 +22,7 @@ DFW_BOX = (-98.1, 32.0, -96.0, 33.5)  # xmin, ymin, xmax, ymax around the 9 DFW 
 MAX_SITES_PER_BUSINESS = 5
 QUEUE_INPUT_COLUMNS = ("licence_number", "business_name", "county")  # the queue has no licence holder column
 OUT_COLUMNS = ["licence_number", "business_name", "county", "outcome", "identity_label", "match_by", "matched_records",
-               "records_with_website", "source_record_id", "source_datasets", "website_url", "business_phone",
+               "records_with_website", "source_record_id", "source_datasets", "zip_county_match", "website_url", "business_phone",
                "phone_source_url", "form_url", "lookup_date"]
 
 
@@ -49,6 +49,10 @@ def fetch_dfw_places(release: str = OVERTURE_RELEASE) -> list[dict]:
             for id_, name, confidence, websites, addresses, datasets in rows]
 
 
+def in_texas(record: dict, zcta_counties: dict[str, set[str]]) -> bool:
+    return any(zip_in_texas(a.get("postcode"), zcta_counties) for a in record["addresses"])
+
+
 def in_business_county(record: dict, county: str, zcta_counties: dict[str, set[str]]) -> bool:
     return any(zip_in_county(a.get("postcode"), county, zcta_counties) for a in record["addresses"])
 
@@ -61,15 +65,15 @@ def build_name_index(records: list[dict]) -> dict[str, set[int]]:
     return index
 
 
-def matching_records(business_name: str, county: str, records: list[dict], index: dict[str, set[int]],
+def matching_records(business_name: str, records: list[dict], index: dict[str, set[int]],
                      zcta_counties: dict[str, set[str]]) -> list[dict]:
-    """Records whose name has every main word of the licence name (same test as shares_main_words) and a ZIP in the
-    business's TDLR county."""
+    """Records whose name has every main word of the licence name (same test as shares_main_words) and a ZIP in any
+    Texas county. The TDLR county isn't a filter: it is recorded as zip_county_match."""
     stems = _main_word_stems(business_name)
     if not stems:
         return []
     positions = set.intersection(*(index.get(stem, set()) for stem in stems))
-    return [records[p] for p in sorted(positions) if in_business_county(records[p], county, zcta_counties)]
+    return [records[p] for p in sorted(positions) if in_texas(records[p], zcta_counties)]
 
 
 def confirm_on_own_site(business: dict, matched: list[dict], read_site=read_own_site_contacts) -> dict:
@@ -115,8 +119,11 @@ def measure_open_places_recovery(queue_csv, out_csv, records: list[dict], zcta_c
         writer = csv.DictWriter(f, fieldnames=OUT_COLUMNS)
         writer.writeheader()
         for business in businesses:
-            matched = matching_records(business["business_name"], business["county"], records, index, zcta_counties)
+            matched = matching_records(business["business_name"], records, index, zcta_counties)
             result = confirm_on_own_site(business, matched, read_site)
+            if result.get("source_record_id"):
+                source = next(r for r in matched if r["id"] == result["source_record_id"])
+                result["zip_county_match"] = "yes" if in_business_county(source, business["county"], zcta_counties) else "no"
             label = identity_label(result["outcome"])
             writer.writerow({column: "" for column in OUT_COLUMNS} | business | result
                             | {"identity_label": label, "lookup_date": lookup_date})

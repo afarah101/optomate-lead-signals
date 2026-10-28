@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from leads.dfw_filter import DFW_COUNTIES
-from leads.zip_county import DFW_COUNTY_FIPS, load_zcta_counties, zip_in_county
+from leads.zip_county import DFW_COUNTY_FIPS, load_zcta_counties, zip_in_county, zip_in_texas
 
 HEADER = ("OID_ZCTA5_20|GEOID_ZCTA5_20|NAMELSAD_ZCTA5_20|AREALAND_ZCTA5_20|AREAWATER_ZCTA5_20|MTFCC_ZCTA5_20|"
           "CLASSFP_ZCTA5_20|FUNCSTAT_ZCTA5_20|OID_COUNTY_20|GEOID_COUNTY_20|NAMELSAD_COUNTY_20|AREALAND_COUNTY_20|"
@@ -27,6 +27,8 @@ SAMPLE_ROWS = [
     row("75007", "48085", "Collin County", 100),
     row("75189", "48397", "Rockwall County", 0),        # water-only overlap: not a link
     row("", "48257", "Kaufman County", 70000),          # county area outside any ZCTA: skipped
+    row("75401", "48231", "Hunt County", 8000),         # Texas, outside the 9 DFW counties
+    row("74103", "40143", "Tulsa County", 6000),        # not Texas
 ]
 
 
@@ -38,7 +40,8 @@ def zcta_counties(tmp_path):
 
 
 def test_loader_reads_the_real_header_and_skips_empty_zcta_rows(zcta_counties):
-    assert zcta_counties == {"75201": {"48113"}, "76132": {"48439"}, "75007": {"48113", "48121", "48085"}}
+    assert zcta_counties == {"75201": {"48113"}, "76132": {"48439"}, "75007": {"48113", "48121", "48085"},
+                             "75401": {"48231"}, "74103": {"40143"}}
     assert "" not in zcta_counties
 
 
@@ -70,6 +73,15 @@ def test_water_only_overlap_and_unknown_county_are_rejected(zcta_counties):
     assert zip_in_county("75189", "Rockwall", zcta_counties) is False
     assert zip_in_county("75201", "Harris", zcta_counties) is False
     assert zip_in_county("75201", None, zcta_counties) is False
+
+
+@pytest.mark.parametrize("zip_code, in_texas", [
+    ("75201", True), ("75401", True), ("75401-0001", True),   # a DFW county, Hunt County, ZIP+4
+    ("74103", False),                                          # Oklahoma
+    ("75189", False), ("75999", False), (None, False), ("", False), ("7540", False),  # water-only, unknown, bad
+])
+def test_zip_in_any_texas_county(zcta_counties, zip_code, in_texas):
+    assert zip_in_texas(zip_code, zcta_counties) is in_texas
 
 
 def test_fips_map_covers_exactly_the_dfw_counties():

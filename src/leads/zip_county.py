@@ -13,6 +13,7 @@ DFW_COUNTY_FIPS = {
     "KAUFMAN": "48257", "PARKER": "48367", "ROCKWALL": "48397", "TARRANT": "48439",
 }
 US_ZIP = re.compile(r"(\d{5})(?:-\d{4})?")
+TEXAS_FIPS_PREFIX = "48"
 
 
 def load_zcta_counties(path=ZCTA_COUNTY_FILE) -> dict[str, set[str]]:
@@ -26,7 +27,15 @@ def load_zcta_counties(path=ZCTA_COUNTY_FILE) -> dict[str, set[str]]:
     return counties
 
 
-def zip_in_county(zip_code: str | None, county: str | None, zcta_counties: dict[str, set[str]]) -> bool:
+def _counties_of(zip_code: str | None, zcta_counties: dict[str, set[str]]) -> set[str]:
     match = US_ZIP.fullmatch((zip_code or "").strip())
+    return zcta_counties.get(match.group(1), set()) if match else set()
+
+
+def zip_in_county(zip_code: str | None, county: str | None, zcta_counties: dict[str, set[str]]) -> bool:
     fips = DFW_COUNTY_FIPS.get((county or "").strip().upper())
-    return bool(match and fips) and fips in zcta_counties.get(match.group(1), ())
+    return bool(fips) and fips in _counties_of(zip_code, zcta_counties)
+
+
+def zip_in_texas(zip_code: str | None, zcta_counties: dict[str, set[str]]) -> bool:
+    return any(fips.startswith(TEXAS_FIPS_PREFIX) for fips in _counties_of(zip_code, zcta_counties))
