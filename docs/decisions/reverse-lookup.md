@@ -42,8 +42,8 @@ Not skipped: dealer subdomains on brand platforms whose host names a contractor 
 The existing own-site reader (`read_own_site_contacts`), unchanged rules: robots.txt, at most 2 pages (home + one
 contact page), 1 request per second across all sites, 10 s timeout, no retries, honest User-Agent, no emails, phone
 only from `tel:` or schema.org. The reader now also returns every licence number it read
-(`licence_numbers_shown`): digits starting within 20 characters after a `TACL[\s-]?[AB]` prefix, leading zeros
-dropped. This is the same rule the lookup already uses; `site_shows_licence_number` is now built on it.
+(`licence_numbers_shown`): after each `TACL[\s-]?[AB]` prefix, **the first** run of digits, if it starts within 20
+characters, leading zeros dropped (first-number rule from 2026-10-28, see `lookup-automation.md`). This is the same rule the lookup already uses; `site_shows_licence_number` is now built on it.
 
 ## Join (the name check is required)
 
@@ -98,3 +98,28 @@ outreach-eligible (verified and `likely_corporate`). 1 of the 32 is among the 80
 Seen in the data: years and area codes within 20 characters of the prefix are read as numbers (`2026`, `2022`,
 `972`). In this sample it changed no verified result, but on one site `2022` is also a DFW lead's licence and made
 the domain `many_licences`. No full run until Ahmed approves.
+
+## Re-run v2 with the first-number rule (2026-10-28): the same 200 domains
+
+Same seed, same 200 domains (checked against the v1 domain log before crawling). Outputs:
+`2026-11_reverse_lookup_sample_v2.csv` and `2026-11_reverse_lookup_sample_domains_v2.csv`; v1 is kept.
+
+| | v1 | v2 |
+|---|---|---|
+| Verified (outreach-eligible) | 17 (6) | **17 (6)**, the same 17 businesses |
+| Unresolved | 15 | 14: the `2022` row is gone (a year read as a licence), and `30880` moves from `many_licences` to `licence_name_mismatch` |
+| Domains with 2+ numbers read | 13 | 1 (two prefixes on one site) |
+| Domain outcomes changed | | 3: the `2022` site; one site from `licence_not_in_leads` to `licence_unknown` (a dropped second number had been a TDLR number outside DFW); one site from `robots_blocked` to a homepage 403 (the live site changed) |
+
+**Why sites fail to load (v2, 61 `fetch_failed`; the 60 from v1 are all among them).** Cause read from the original
+exception, without changing the fetch code:
+
+| Cause | Sites |
+|---|---|
+| DNS: the host doesn't resolve (47 of 48 don't resolve with or without `www.` either) | 48 |
+| TLS: certificate for another host name (2), self-signed (1), access denied (1) | 4 |
+| 403 (homepage) | 2 |
+| Timeout | 1 |
+| Other: homepage 404 (3), homepage 409 (2), too many redirects (1) | 6 |
+
+Most failures are dead domains in the Foursquare listings, so fetch changes can recover at most about 13 of 200.

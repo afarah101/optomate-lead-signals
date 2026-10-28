@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from leads.website_contacts import SiteUnreadable
+from leads.website_contacts import Response, SiteUnreadable, read_own_site_contacts
 from leads.reverse_lookup import (
     BUSINESS_COLUMNS, crawlable_domains, domain_of, draw_sample, judge_site, load_leads, run_reverse_lookup_sample,
 )
@@ -90,6 +90,20 @@ def test_join_requires_licence_and_name(the_site, outcome, found):
     domain_outcome, findings = judge_site(the_site, LEADS, STATEWIDE)
     assert domain_outcome == outcome
     assert [(f["lead"]["licence_number"], f["outcome"], f["name_also_matches"]) for f in findings] == found
+
+
+def test_year_or_phone_after_the_licence_is_not_read_as_another_lead():
+    # A copyright year and an area code that are also DFW licence numbers must not make the site many_licences.
+    leads = LEADS | {"2022": lead("2022", "YEAR NUMBER LLC"), "972": lead("972", "AREA CODE LLC")}
+    markup = ("<html><head><title>Sample Cooling</title></head><body>"
+              "<footer>TACLA00011111C &copy; 2022 Call 972-555-0100</footer></body></html>")
+
+    def get(url):
+        return Response(404, url, "", "") if url.endswith("/robots.txt") else Response(200, url, "text/html", markup)
+
+    the_site = read_own_site_contacts("https://sample.example/", get=get)
+    assert the_site["licence_numbers"] == ["11111"]
+    assert judge_site(the_site, leads, STATEWIDE)[0] == "no_tel_phone"
 
 
 def test_load_leads_never_reads_the_licence_holder(tmp_path):

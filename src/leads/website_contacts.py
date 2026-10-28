@@ -201,11 +201,13 @@ def _visible_text(markup: str) -> str:
 
 
 def licence_numbers_shown(page_html: str) -> set[str]:
-    # Real sites write e.g. TACLB00012345E (see lookup-automation.md); only the TACLA/TACLB prefix counts.
+    # Real sites write e.g. TACLB00012345E (see lookup-automation.md); only the TACLA/TACLB prefix counts, and only
+    # the first number after it, so a year or phone number nearby isn't read as a licence.
     text, numbers = _visible_text(page_html), set()
     for prefix in re.finditer(r"TACL[\s-]?[AB]", text):
-        after = text[prefix.end():prefix.end() + 40]
-        numbers |= {run.group().lstrip("0") for run in re.finditer(r"\d+", after) if run.start() <= 20}
+        run = re.search(r"\d+", text[prefix.end():prefix.end() + 40])
+        if run and run.start() <= 20:
+            numbers.add(run.group().lstrip("0"))
     return numbers - {""}
 
 

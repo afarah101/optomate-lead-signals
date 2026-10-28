@@ -220,3 +220,18 @@ chat, 28 Oct 2026; terms in `CONTEXT.md`):
 - A reason with no label is an error: the run stops rather than write an unlabelled row.
 - No outreach code exists yet. `may_go_to_outreach(row)` is the gate it must use: true only for `verified`.
 - v1–v4 files are not relabelled. The column appears from the next run.
+
+### 2026-10-28: Only the first number after the prefix (before the code)
+
+Applies to the lookup and the reverse lookup: one rule, `licence_numbers_shown()` in `src/leads/website_contacts.py`.
+
+| | Old rule | New rule |
+|---|---|---|
+| Digits | **Any** run starting within 20 characters after `TACLA`/`TACLB` | **Only the first** run after the prefix, and only if it starts within 20 characters. Later digits are ignored |
+| Leading zeros, exact match, visible text only | | **Unchanged** |
+
+**Why.** The reverse-lookup sample (`reverse-lookup.md`, sample result) read years and area codes near the prefix as
+licence numbers (`2026`, `2022`, `972`). On one site `2022` is also a DFW lead's licence. The licence number always
+comes straight after the prefix in the evidence above.
+
+**Cost.** Two licences under one prefix (`TACLA 12345, 67890`) now give only the first; two prefixes still give both.

@@ -273,7 +273,12 @@ def test_texas_without_zip_is_named_but_not_a_candidate():
     ("<p>TACLC00012345E</p>", "12345", False),                                     # only A or B
     ("<p>TACL--A 12345E</p>", "12345", False),                                     # one separator at most
     ("<p>TACLA123456E</p>", "12345", False),                                       # a longer number is not ours
-    ("<p>TACLA 99999C and 12345</p>", "12345", True),                              # within 20 characters
+    ("<p>TACLA 99999C and 12345</p>", "12345", False),                             # only the first number counts
+    ("<p>TACLA 99999C and 12345</p>", "99999", True),
+    ("<p>TACLA12345C &copy; 2026 Sample Cooling</p>", "2026", False),             # a year after the licence
+    ("<p>TACLA12345C &copy; 2026 Sample Cooling</p>", "12345", True),
+    ("<p>TACLB 12345E Call 972-555-0100</p>", "972", False),                       # an area code after the licence
+    ("<p>TACLA #: 00012345C</p>", "12345", True),                                  # punctuation before the number
     ("<p>TACLA see our office for details 12345</p>", "12345", False),             # beyond 20 characters
     ("<script>var l='TACLA12345C'</script><p>no licence</p>", "12345", False),     # visible text only
     ("<p>TACLA12345C</p>", "", False),
@@ -290,7 +295,9 @@ def test_reader_reports_licence_from_either_page():
 
 @pytest.mark.parametrize("markup, numbers", [
     ("<footer>TDLR TACLB00012345E</footer>", {"12345"}),                       # leading zeros dropped
-    ("<p>TACLA 99999C and 12345</p>", {"99999", "12345"}),                     # every run within 20 characters
+    ("<p>TACLA 99999C and 12345</p>", {"99999"}),                              # only the first number
+    ("<p>TACLA12345C &copy; 2026</p>", {"12345"}),                             # not the year
+    ("<p>TACLB 12345E Call 972-555-0100</p>", {"12345"}),                      # not the phone number
     ("<p>TACLA see our office for details 12345</p>", set()),                  # beyond 20 characters
     ("<p>TACLA12345C</p><p>TACL-B 0067890E</p>", {"12345", "67890"}),          # two prefixes
     ("<p>TACLA 0000E</p>", set()),                                             # all zeros is no number
