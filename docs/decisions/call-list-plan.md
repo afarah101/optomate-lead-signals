@@ -100,3 +100,29 @@ Fix every reported row before calls start.
 | Date | Old rule | New rule | Reason |
 |---|---|---|---|
 | 2026-10-27 (before any automated lookup) | "Never scrape. Every lookup is done by hand." | Automated lookup under the rules in `lookup-automation.md`: Google Places (New), used live, finds each business's website, then a strict own-site reader reads at most 2 pages (homepage + one contact page), obeys robots.txt, sends an honest User-Agent and makes at most 1 request per second. It stores only a phone from `tel:` links or schema.org `telephone`, the contact-form page URL and the website URL, each with its source page. Emails are never collected. Anything it can't confirm goes to a manual queue, worked by hand under the Lookup step rules above. | The open-source extractor (vdrmota) was rejected after a sandbox security test: 104 dependency advisories, fingerprint spoofing, and it mixed personal contacts in with business ones. A narrow reader with explicit limits replaces it. |
+| 2026-10-29 (before the v2 draw) | Month-1 pool: every active `likely_corporate` lead in `tdlr_hvac_dfw.csv` (v1 list, seed `20261101`) | Month-1 pool: **verified** businesses only, from `data/logs/2026-11_overlap_v1.csv` (reverse lookup verified + v3 auto rows), and only `entity_flag = likely_corporate`. See "Month-1 list v2" below. | The manual queue cannot be filled by hand before calls start, so most v1 businesses would have no confirmed phone. |
+
+## Month-1 list v2: verified businesses only (written 2026-10-29, before the code)
+
+Replaces the v1 list (`2026-11_call_list.csv`, kept unchanged; nobody has been called from it).
+
+- **Pool:** every row of `data/logs/2026-11_overlap_v1.csv` (all verified on the business's own site) whose
+  `entity_flag` in `tdlr_hvac_dfw.csv` is `likely_corporate`, joined by licence number (leading zeros ignored). The
+  flag is read from the leads file for every row, which judges the 18 v3 auto rows the overlap file left `unknown`.
+  The other v1 pool rules still hold: active on 2026-11-30, not on the do-not-contact list (empty: no calls yet).
+- **Size:** the whole pool. It is below 100, so every eligible business is on the list and the draw only sets the bands.
+- **Seed: `20261102`.** Same draw and the same 3 time bands (`morning`, `afternoon`, `evening`, counts differ by at most
+  1), done by `draw_month_call_list()` with `size` set to the pool size. Code: `scripts/draw_verified_call_list.py`.
+- **Phone:** from the overlap file (the site phone, else the v3 auto phone). A phone the reverse lookup took from
+  Foursquare (`reverse_phone_source = Foursquare`) is marked `phone_unconfirmed = yes`: it was not seen on the site, so
+  the caller checks it on the site before dialling.
+- **Known bias:** businesses that show their TDLR licence on their own site may run a tighter office and answer calls
+  better than the average DFW contractor. Missed-call rates from this list may read low against the whole market.
+- **Smaller list:** fewer than 100 businesses makes the 15-per-band calibration minimum harder to reach; the
+  second-batch rule above still applies.
+- **Output:** `data/logs/2026-11_call_list_v2.csv`, the call-sheet columns plus `phone_unconfirmed`. No email columns.
+  Never overwritten.
+
+**Recorded after the v2 draw (2026-10-29):** 98 verified businesses; 64 `likely_corporate` (46 already flagged, plus
+all 18 of the v3 auto rows); 3 expire before 2026-11-30, so **61 drawn** with seed `20261102`. Morning / afternoon /
+evening: 21 / 20 / 20. 3 phones `phone_unconfirmed` (from Foursquare); every row has a phone.
