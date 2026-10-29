@@ -37,5 +37,13 @@ def test_duplicate_licence_numbers_are_removed():
 
 def test_lead_has_every_output_column():
     lead = to_lead(licence("1"), "https://data.texas.gov/x", TODAY)
-    assert list(lead) == LEAD_COLUMNS
+    assert list(lead) == LEAD_COLUMNS == [
+        "business_name", "licence_number", "licence_type", "licence_status", "expiry_date", "address", "city", "county",
+        "source", "retrieved_on",
+    ]
     assert lead["county"] == "Dallas" and lead["licence_status"] == "" and lead["retrieved_on"] == "2026-10-27"
+
+
+def test_lead_never_holds_the_licence_holder_name():
+    lead = to_lead(licence("1") | {"owner_name": "DOE, JANE Q"}, "https://data.texas.gov/x", TODAY)
+    assert "licence_holder" not in lead and "DOE, JANE Q" not in lead.values()

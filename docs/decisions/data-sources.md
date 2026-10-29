@@ -36,7 +36,7 @@ I did **not** open it, because it sits on the TDLR licence search site, which is
 | Output column | Source field | Note |
 |---|---|---|
 | business_name | `business_name` | |
-| licence_holder | `owner_name` | **To be removed** (decision 2026-10-29, pending code change; see "Change log") |
+| ~~licence_holder~~ | ~~`owner_name`~~ | **Removed 2026-10-29** (see "Change log"). `owner_name` is no longer read into the leads file |
 | licence_number | `license_number` | |
 | licence_type | `license_type` | Kept value: `A/C Contractor` (the Air Conditioning and Refrigeration Contractor licence). `A/C Technician` and `A/C CE Provider` are excluded. |
 | licence_status | *none* | **No status column in the dataset. Left empty.** |
@@ -91,3 +91,4 @@ the entity has ended, and a real company can trade under a name with no suffix.
 |---|---|---|---|
 | 2026-10-29 | `licence_holder` (TDLR `owner_name`) kept in `data/leads/tdlr_hvac_dfw.csv` | **Remove the `licence_holder` column from the leads file. Pending code change**: the leads builder still writes it until that change is made | It is personal data with no current use (`docs/compliance/legitimate-interests-assessment.md`, data minimisation) |
 | 2026-10-29 | `likely_corporate` on LLC, L.L.C., INC, INCORPORATED, CORP, CORPORATION, LTD, LP or LLP | **LP removed.** LLC, L.L.C., INC, INCORPORATED, CORP, CORPORATION, LTD and LLP still count (`src/leads/entity_type.py`). **LLP and LP treatment: TO CONFIRM with adviser** | Compliance decision, 2026-10-29: outreach is to LLC and Inc businesses only |
+| 2026-10-29 | `licence_holder` removal pending a code change | **Done.** `src/leads/dfw_filter.py` no longer writes `licence_holder`; `data/leads/tdlr_hvac_dfw.csv` was rebuilt from the existing raw download `data/raw/tdlr_ac_contractors_2026-10-27.csv` (no new download, `retrieved_on` 2026-10-27). 4,619 rows before and after. The rebuild also applied the LP rule above: `entity_flag` changed from `likely_corporate` to `unconfirmed` on 13 LP-only rows (2,135 → 2,122 `likely_corporate`); every other value is unchanged. Older files under `data/` that still hold the column are not changed | Decision 5, compliance review 2026-10-29 |

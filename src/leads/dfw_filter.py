@@ -7,7 +7,8 @@ DFW_COUNTIES = frozenset(
 )
 
 LEAD_COLUMNS = [
-    "business_name", "licence_holder", "licence_number", "licence_type", "licence_status",
+    # No licence_holder: the holder name is personal data and is never kept (data-sources.md, 2026-10-29).
+    "business_name", "licence_number", "licence_type", "licence_status",
     "expiry_date", "address", "city", "county", "source", "retrieved_on",
 ]
 
@@ -45,7 +46,6 @@ def to_lead(licence: dict, source: str, retrieved_on: date) -> dict:
     )
     return {
         "business_name": licence.get("business_name", ""),
-        "licence_holder": licence.get("owner_name", ""),
         "licence_number": licence.get("license_number", ""),
         "licence_type": licence.get("license_type", ""),
         "licence_status": "",  # not in the dataset; see docs/decisions/data-sources.md
