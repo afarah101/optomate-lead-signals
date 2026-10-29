@@ -26,7 +26,7 @@ The code is `src/leads/place_match.py`, `src/leads/website_contacts.py` and `src
 - **Obey robots.txt** for the token `OptomateResearch`. If it disallows a page, that page is not fetched.
   If robots.txt answers 401/403, or can't be reached (server error, timeout), nothing on the site is fetched.
   A 404 means no rules, so everything is allowed.
-- **User-Agent:** `OptomateResearch/0.1 (research contact: ops@optomate.co.uk)`. No other identity, no browser disguise, no
+- **User-Agent:** `OptomateResearch/0.1 (research contact: admin@optomate.co.uk)`. No other identity, no browser disguise, no
   fingerprinting, no proxies.
 - **At most 1 request per second**, counted across every request (robots.txt, pages and redirects).
 - **10-second timeout** per request. **No retries.** A failure goes to the manual queue.
@@ -47,7 +47,7 @@ The code is `src/leads/place_match.py`, `src/leads/website_contacts.py` and `src
 - **Phone choice:** schema.org `telephone` first, because the business declares it as its number. Otherwise the `tel:`
   number that appears most often on the page (the main number usually repeats in the header and footer); on a tie,
   the first one. The number must be a valid 10-digit US number and is stored as `214-555-0100`.
-- **Never collect emails.** `contact_email` stays empty, and `mailto:` links are ignored.
+- **Never collect emails.** `contact_email` stays empty, and `mailto:` links are ignored. (Outreach email addresses: rule only, see "2026-10-29: Outreach email address" below; no code collects them yet.)
 - **Never parse phones from free text.** A number that isn't in a `tel:` link or schema.org markup is ignored.
 
 ## Accepting a site
@@ -235,3 +235,28 @@ licence numbers (`2026`, `2022`, `972`). On one site `2022` is also a DFW lead's
 comes straight after the prefix in the evidence above.
 
 **Cost.** Two licences under one prefix (`TACLA 12345, 67890`) now give only the first; two prefixes still give both.
+
+### 2026-10-29: User-Agent contact address
+
+| | Old rule | New rule | Reason |
+|---|---|---|---|
+| User-Agent | `OptomateResearch/0.1 (research contact: ops@optomate.co.uk)` | `OptomateResearch/0.1 (research contact: admin@optomate.co.uk)` | One contact address for site owners and data requests (`docs/compliance/article-14-notice.md`) |
+
+### 2026-10-29: Outreach email address (rule only, before any code)
+
+| | Old rule | New rule |
+|---|---|---|
+| Outreach email address | None: the lookup never collects emails | An outreach email may go to a **named or generic** address (for example `jane@` or `office@`), **only as published on the business's own website**, stored with the page it was on. **No guessed, pattern-built or purchased addresses** |
+
+- **Gmail-type addresses** (a free webmail address shown on the site as the business contact): **TO CONFIRM with
+  adviser.**
+- This is a rule only. The own-site reader still collects no email (`What is stored` above). The code comes later,
+  under this rule, and only `verified` businesses may be emailed (`Identity label`, 2026-10-28).
+
+### 2026-10-29: Facts for a personal opening line (rule only, before any code)
+
+- A personal opening line in an outreach email may use **only facts from the business's own website and from TDLR
+  data.**
+- **Each fact is stored with its source URL.** A fact without a source is never used.
+- **Social media is read by hand only.** No automated collection from any social network.
+- **Google review text is never used** (and never stored: `signal-rules.md`, "Data origin").

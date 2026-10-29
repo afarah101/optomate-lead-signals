@@ -4,7 +4,7 @@ import re
 
 # Whole word = not touching a letter or digit, so "INCREDIBLE" and "HELP" don't match.
 _CORPORATE_SUFFIX = re.compile(
-    r"(?<![A-Z0-9])(?:L\.L\.C\.?|LLC|LLP|LP|INCORPORATED|INC|CORPORATION|CORP|LTD)(?![A-Z0-9])",
+    r"(?<![A-Z0-9])(?:L\.L\.C\.?|LLC|LLP|INCORPORATED|INC|CORPORATION|CORP|LTD)(?![A-Z0-9])",
     re.IGNORECASE,
 )
 

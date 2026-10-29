@@ -10,7 +10,7 @@ from leads.entity_type import flag_likely_corporate_entity
 
 @pytest.mark.parametrize("name", [
     "3 PILLARS MECHANICAL, LLC", "ACME AIR INC", "ACME AIR INC.", "ACME AIR INCORPORATED", "ACME CORP",
-    "ACME CORPORATION", "ACME LTD", "ACME HOLDINGS LP", "SMITH & JONES LLP", "COOL AIR (LLC)",
+    "ACME CORPORATION", "ACME LTD", "SMITH & JONES LLP", "COOL AIR (LLC)",
 ])
 def test_corporate_suffix_as_whole_word(name):
     assert flag_likely_corporate_entity(name) == "likely_corporate"
@@ -35,4 +35,10 @@ def test_punctuated_llc(name):
 
 @pytest.mark.parametrize("name", ["", "   ", None])
 def test_empty_name_is_unconfirmed(name):
+    assert flag_likely_corporate_entity(name) == "unconfirmed"
+
+
+@pytest.mark.parametrize("name", ["ACME HOLDINGS LP", "ACME AIR, LP", "acme air lp"])
+def test_lp_alone_is_not_corporate(name):
+    # LP removed 2026-10-29 (data-sources.md change log); LLP and LP treatment: TO CONFIRM with adviser.
     assert flag_likely_corporate_entity(name) == "unconfirmed"

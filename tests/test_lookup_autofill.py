@@ -166,7 +166,7 @@ def test_user_agent_carries_the_research_contact(monkeypatch):
 
     monkeypatch.setattr(website_contacts._OPENER, "open", fake_open)
     assert http_get("https://x.example/", throttle=Throttle(min_interval=0)).status == 200
-    assert seen == {"user_agent": "OptomateResearch/0.1 (research contact: ops@optomate.co.uk)", "timeout": 10}
+    assert seen == {"user_agent": "OptomateResearch/0.1 (research contact: admin@optomate.co.uk)", "timeout": 10}
 
 
 def test_one_request_per_second():

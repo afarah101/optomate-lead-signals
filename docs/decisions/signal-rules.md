@@ -55,12 +55,21 @@ If there is no rate this month, the trend is empty.
 
 ## Forms
 
-- **One honest research inquiry per business per calendar month.** A second form in the same month is rejected.
+- **One research message per business per calendar month.** A second form in the same month is rejected.
+- **The form message names Optomate, asks the same real question as the call ("Do you take emergency calls after
+  6pm?"), and includes the privacy notice URL.** No pretend customer inquiries (rule change 2026-10-29).
 - `form_reply_hours` = hours from `sent_at_local` to `first_reply_at_local` (first human reply), to one decimal place. The code
   computes it in Dallas time and handles daylight-saving changes.
 - **No reply within 72 hours** (no `first_reply_at_local`, or a reply after more than 72.0 hours) means `no_reply`.
 - A row is rejected if the reply is before the send time, if a timestamp is not `YYYY-MM-DD HH:MM`, or if a filled-in
   `form_reply_hours` disagrees with the computed value.
+
+## Notice timing (added 2026-10-29)
+
+- **An answered call or a form message is the first contact**, and it gives the privacy notice URL
+  (`docs/templates/call_script.md`; the form rule above).
+- **An unanswered call is not a contact.** No voicemail or other message is ever left.
+- **The first email carries the notice** and is sent **within 1 month of collecting the data**.
 
 ## Rejected rows
 
@@ -92,3 +101,11 @@ Every eligible row is marked `manual_entity_check = required`.
 1. A form must have been sent that month, so that `cold` (0 points) means "signals measured and none missed", not
    "no form data".
 2. That form must be at least 72 hours old when the ranking runs, so that `no_reply` is final and not "still waiting".
+
+## Rule changes
+
+| Date | Old rule | New rule | Reason |
+|---|---|---|---|
+| 2026-10-29 | Call opening "this is a short research call. I am not selling anything", question about opening hours, caller names the company only if asked | The opening names Ahmed and Optomate, a UK company, states the purpose (studying how HVAC firms handle calls) and that a call-answering service may be offered later. One real question: "Do you take emergency calls after 6pm?" The caller gives the notice URL. Never leave a voicemail (`docs/templates/call_script.md`) | The call must state its real purpose (`docs/compliance/legitimate-interests-assessment.md`) |
+| 2026-10-29 | "One honest research inquiry" per month, wording not set | The form message names Optomate, asks the same real question and includes the notice URL. No pretend customer inquiries | The same transparency reason |
+| 2026-10-29 | No rule on when the privacy notice is given | An answered call or a form message is the first contact and gives the notice URL. An unanswered call is not a contact. The first email carries the notice and goes within 1 month of collecting the data | UK GDPR Article 14(3): notice by the first contact, and within one month |

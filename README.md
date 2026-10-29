@@ -1,3 +1,3 @@
 ## Research contact
 
-Contact: ops@optomate.co.uk
+Contact: admin@optomate.co.uk

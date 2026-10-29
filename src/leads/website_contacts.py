@@ -16,7 +16,7 @@ from http.client import HTTPException
 from urllib.parse import unquote, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
-USER_AGENT = "OptomateResearch/0.1 (research contact: ops@optomate.co.uk)"
+USER_AGENT = "OptomateResearch/0.1 (research contact: admin@optomate.co.uk)"
 ROBOTS_TOKEN = "OptomateResearch"
 TIMEOUT_SECS = 10
 MIN_SECS_BETWEEN_REQUESTS = 1.0

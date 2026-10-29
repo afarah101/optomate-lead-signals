@@ -36,7 +36,7 @@ I did **not** open it, because it sits on the TDLR licence search site, which is
 | Output column | Source field | Note |
 |---|---|---|
 | business_name | `business_name` | |
-| licence_holder | `owner_name` | |
+| licence_holder | `owner_name` | **To be removed** (decision 2026-10-29, pending code change; see "Change log") |
 | licence_number | `license_number` | |
 | licence_type | `license_type` | Kept value: `A/C Contractor` (the Air Conditioning and Refrigeration Contractor licence). `A/C Technician` and `A/C CE Provider` are excluded. |
 | licence_status | *none* | **No status column in the dataset. Left empty.** |
@@ -78,9 +78,16 @@ the dataset fills in, but it can be the holder's home address, and the brief did
 ## Entity-type flag (`entity_flag` column)
 
 `flag_likely_corporate_entity(business_name)` in `src/leads/entity_type.py` returns `likely_corporate` when the business name
-contains LLC, L.L.C., INC, INCORPORATED, CORP, CORPORATION, LTD, LP or LLP as a whole word (any case). Otherwise it returns `unconfirmed`.
+contains LLC, L.L.C., INC, INCORPORATED, CORP, CORPORATION, LTD or LLP as a whole word (any case). Otherwise it returns `unconfirmed`. LP alone no longer counts (2026-10-29). **LLP and LP treatment: TO CONFIRM with adviser.**
 
 **This flag is a hint from the name only. It does not confirm legal entity status.** A name can carry "LLC" after
 the entity has ended, and a real company can trade under a name with no suffix.
 **Before any email, confirm each entity by hand in the Texas Comptroller Taxable Entity Search**
 (https://comptroller.texas.gov/taxes/franchise/account-status/search).
+
+## Change log
+
+| Date | Old rule | New rule | Reason |
+|---|---|---|---|
+| 2026-10-29 | `licence_holder` (TDLR `owner_name`) kept in `data/leads/tdlr_hvac_dfw.csv` | **Remove the `licence_holder` column from the leads file. Pending code change**: the leads builder still writes it until that change is made | It is personal data with no current use (`docs/compliance/legitimate-interests-assessment.md`, data minimisation) |
+| 2026-10-29 | `likely_corporate` on LLC, L.L.C., INC, INCORPORATED, CORP, CORPORATION, LTD, LP or LLP | **LP removed.** LLC, L.L.C., INC, INCORPORATED, CORP, CORPORATION, LTD and LLP still count (`src/leads/entity_type.py`). **LLP and LP treatment: TO CONFIRM with adviser** | Compliance decision, 2026-10-29: outreach is to LLC and Inc businesses only |
