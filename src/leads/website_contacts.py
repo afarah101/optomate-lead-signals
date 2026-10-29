@@ -1,7 +1,8 @@
 """Leads: a strict reader for a business's own website. Rules: docs/decisions/lookup-automation.md.
 
 At most 2 pages (homepage + one contact page), robots.txt obeyed, honest User-Agent, 1 request per second, 10 s timeout,
-no retries. Reads a phone only from tel: links or schema.org JSON-LD telephone, never from text. Never reads emails.
+no retries. Reads a phone only from tel: links or schema.org JSON-LD telephone, never from text. Reads emails only when
+asked (collect_emails=True), from mailto: links and visible text; an email hidden or spelled out is never decoded.
 """
 
 import html
@@ -110,7 +111,7 @@ class _PageReader(HTMLParser):
     def __init__(self, base_url: str):
         super().__init__(convert_charrefs=True)
         self.base_url, self.title, self.og_site_name = base_url, "", ""
-        self.tel_numbers, self.json_ld, self.links = [], [], []
+        self.tel_numbers, self.json_ld, self.links, self.mailto = [], [], [], []
         self.has_message_form = False
         self._in_title = self._in_json_ld = False
         self._json_ld_parts, self._form_depth, self._anchor = [], 0, None
@@ -131,6 +132,8 @@ class _PageReader(HTMLParser):
             href = a.get("href", "").strip()
             if href.lower().startswith("tel:"):
                 self.tel_numbers.append(href[4:])
+            elif href.lower().startswith("mailto:"):
+                self.mailto.append(href[7:])
             elif href and not href.lower().startswith(("mailto:", "javascript:", "#")):
                 self._anchor = [urljoin(self.base_url, href), []]
 
@@ -192,6 +195,7 @@ def _read_page(response: Response) -> dict:
         "phone": schema_phone or (tel_counts.most_common(1)[0][0] if tel_counts else ""),
         "has_message_form": reader.has_message_form,
         "contact_link": contact_link,
+        "mailto": reader.mailto,
     }
 
 
@@ -216,11 +220,39 @@ def site_shows_licence_number(page_html: str, licence_number: str | None) -> boo
     return wanted.isdigit() and wanted in licence_numbers_shown(page_html)
 
 
+FREE_MAIL = re.compile(r"^(?:gmail|yahoo|hotmail|outlook|aol|icloud)\.[a-z.]+$")
+GENERIC_LOCAL_PARTS = frozenset({"info", "office", "service", "sales", "contact", "support", "admin", "hello", "dispatch",
+                                 "scheduling", "billing"})
+_EMAIL = re.compile(r"[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}")
+_NOT_A_TLD = {"png", "jpg", "jpeg", "gif", "webp", "svg"}  # retina image names like logo@2x.png
+# Cloudflare email protection, or an address spelled out with (at) / [at] / {at}: shown hidden, so never decoded.
+_HIDDEN_EMAIL = re.compile(r"__cf_email__|/cdn-cgi/l/email-protection|[a-z0-9._-]\s*[\[({]\s*at\s*[\])}]\s*[a-z0-9-]")
+
+
+def emails_shown(page_html: str, mailto: list[str]) -> tuple[list[str], bool]:
+    """(addresses from mailto: links, then visible text, in page order, lower case; whether the page hides one)."""
+    linked = [unquote(m).split("?")[0] for m in mailto]
+    found = [a.strip().lower() for m in linked for a in m.split(",")]
+    text = _visible_text(page_html).lower()
+    found += _EMAIL.findall(text)
+    found = [a for a in dict.fromkeys(found) if _EMAIL.fullmatch(a) and a.rsplit(".", 1)[1] not in _NOT_A_TLD]
+    return found, bool(_HIDDEN_EMAIL.search(page_html.lower()) or _HIDDEN_EMAIL.search(text))
+
+
+def email_type(address: str, site_url: str) -> str:
+    """named / generic (on the site's own domain), TO_CONFIRM (free mail) or other_domain (excluded)."""
+    local, domain = address.rsplit("@", 1)
+    site = _host(site_url)
+    if site and (domain == site or domain.endswith("." + site) or site.endswith("." + domain)):
+        return "generic" if local in GENERIC_LOCAL_PARTS else "named"
+    return "TO_CONFIRM" if FREE_MAIL.match(domain) else "other_domain"
+
+
 def _is_html_ok(response: Response) -> bool:
     return response.status == 200 and response.content_type in ("text/html", "application/xhtml+xml")
 
 
-def read_own_site_contacts(url: str, get=None, licence_number: str | None = None) -> dict:
+def read_own_site_contacts(url: str, get=None, licence_number: str | None = None, collect_emails: bool = False) -> dict:
     get = get or http_get
     url = urlsplit(url)._replace(query="", fragment="").geturl()  # drop tracking parameters from Google's link
     if urlsplit(url).scheme not in ("http", "https"):
@@ -234,6 +266,8 @@ def read_own_site_contacts(url: str, get=None, licence_number: str | None = None
         raise SiteUnreadable("fetch_failed", f"homepage HTTP {home.status}")
     page = _read_page(home)
     numbers = licence_numbers_shown(home.text)
+    emails, hidden = emails_shown(home.text, page["mailto"])
+    email_sources = dict.fromkeys(emails, home.url)
     contacts = {"website_url": home.url, "site_name": page["site_name"], "phone": page["phone"],
                 "phone_source_url": home.url if page["phone"] else "", "form_url": ""}
 
@@ -250,5 +284,11 @@ def read_own_site_contacts(url: str, get=None, licence_number: str | None = None
             if not contacts["phone"] and contact_page["phone"]:
                 contacts.update(phone=contact_page["phone"], phone_source_url=contact.url)
             numbers |= licence_numbers_shown(contact.text)
+            more, more_hidden = emails_shown(contact.text, contact_page["mailto"])
+            email_sources |= {a: contact.url for a in more if a not in email_sources}
+            hidden |= more_hidden
     wanted = (licence_number or "").strip().lstrip("0")
-    return contacts | {"licence_shown": wanted.isdigit() and wanted in numbers, "licence_numbers": sorted(numbers)}
+    contacts |= {"licence_shown": wanted.isdigit() and wanted in numbers, "licence_numbers": sorted(numbers)}
+    if collect_emails:  # opt-in: default callers never receive an email
+        contacts |= {"emails": list(email_sources.items()), "email_hidden": hidden}
+    return contacts

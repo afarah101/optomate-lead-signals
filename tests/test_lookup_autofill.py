@@ -17,7 +17,7 @@ from leads.place_match import (
 )
 from leads import website_contacts
 from leads.website_contacts import (
-    Response, SiteUnreadable, Throttle, http_get, licence_numbers_shown, read_own_site_contacts, same_site,
+    Response, SiteUnreadable, Throttle, email_type, http_get, licence_numbers_shown, read_own_site_contacts, same_site,
     site_shows_licence_number, us_phone,
 )
 from signals.lookup_sheet import check_lookup_sheet
@@ -192,6 +192,62 @@ def test_us_phone(raw, expected):
 def test_same_site():
     assert same_site("https://www.a.example/", "http://a.example/contact")
     assert not same_site("https://a.example/", "https://a.example.evil.example/")
+
+
+# --- published emails (opt-in, decision 4 in lookup-automation.md) ---------------------------------------------
+
+CONTACT_US = "https://www.sample-cooling.example/contact-us"
+
+
+def emails_of(home_body, contact_body="<p>No email here</p>"):
+    web = sample_site(**{SITE: page(home_body + '<a href="/contact-us">Contact us</a>'), CONTACT_US: page(contact_body)})
+    return read_own_site_contacts(SITE, get=web, collect_emails=True), web
+
+
+def test_mailto_and_visible_text_emails_are_found_with_their_page():
+    contacts, _ = emails_of('<a href="mailto:Jane.Doe@Sample-Cooling.example?subject=Hi">Email Jane</a>',
+                            "<p>Write to office@sample-cooling.example</p>")
+    assert contacts["emails"] == [("jane.doe@sample-cooling.example", SITE), ("office@sample-cooling.example", CONTACT_US)]
+    assert contacts["email_hidden"] is False
+
+
+@pytest.mark.parametrize("address, kind", [
+    ("jane@sample-cooling.example", "named"),
+    ("info@sample-cooling.example", "generic"), ("dispatch@sample-cooling.example", "generic"),
+    ("billing@mail.sample-cooling.example", "generic"),
+    ("information@sample-cooling.example", "named"),  # only the exact generic words count
+    ("samplecooling@gmail.com", "TO_CONFIRM"), ("sample@yahoo.co.uk", "TO_CONFIRM"), ("x@icloud.com", "TO_CONFIRM"),
+    ("hello@sample-webdesign.example", "other_domain"), ("jane@gmail.sample-other.example", "other_domain"),
+])
+def test_email_type(address, kind):
+    assert email_type(address, SITE) == kind
+
+
+@pytest.mark.parametrize("hidden", [
+    '<a href="/cdn-cgi/l/email-protection" data-cfemail="1a7b">[email&#160;protected]</a>',
+    '<span class="__cf_email__" data-cfemail="1a7b">[email protected]</span>',
+    "<p>office [at] sample-cooling [dot] example</p>",
+    "<p>office(at)sample-cooling.example</p>",
+])
+def test_hidden_emails_are_flagged_never_decoded(hidden):
+    contacts, _ = emails_of(hidden)
+    assert contacts["emails"] == [] and contacts["email_hidden"] is True
+
+
+def test_emails_in_scripts_or_image_names_are_not_read():
+    contacts, _ = emails_of('<script>var e = "jane@sample-cooling.example";</script><img src="logo@2x.png" alt="">'
+                            "<p>logo@2x.png</p>")
+    assert contacts["emails"] == []
+
+
+def test_email_reading_keeps_the_two_page_limit():
+    _, web = emails_of('<a href="/contact-us">Contact</a><a href="/about">About</a><a href="/team">Team</a>',
+                       '<a href="/staff">Staff emails</a>')
+    assert web.page_requests() == [SITE, CONTACT_US]
+
+
+def test_emails_are_returned_only_when_asked():
+    assert "emails" not in read_own_site_contacts(SITE, get=sample_site())
 
 
 # --- name match ------------------------------------------------------------------------------------------------
