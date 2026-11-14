@@ -52,7 +52,9 @@ sole traders.
 The licence register also lists the licence holder's name. We do not use it, and we are removing it from our records.
 
 **What we never collect or use.** Email addresses that are guessed, built from a pattern or bought; personal mobile
-numbers; review text; anything collected automatically from social media; and call recordings. We do not record calls.
+numbers; review text (our tool reads up to 2 pages of your website, which can show reviews, but it never stores
+or uses review text, and it deletes that page text within 7 days); anything collected automatically from social
+media; and call recordings. We do not record calls.
 
 **Where it comes from.** Public business registers (TDLR), the business's own website, and open map datasets. All are
 publicly available. We can give the exact names on request.

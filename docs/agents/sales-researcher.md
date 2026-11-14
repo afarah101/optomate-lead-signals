@@ -73,6 +73,23 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
   25 sites are tried per run, so a run with many unreadable sites can have fewer than 15 leads.
 - **Schedule:** the task runner adds a fixed delay of up to about 15 minutes, so the 07:47 run starts at about 08:01.
 
+## Spec changes (2026-11-14, second audit of 981c4a2)
+
+- **Roles (F1):** a role with a title word or a hyphen directly before it ("Co-Founder", "Vice President", "Assistant
+  General Manager", "Former Owner") is not one of the 6 roles. Script A refuses that match.
+- **Ranking gate is OFF until a writer exists (M1, M3):** no code writes `data/logs/<YYYY-MM>_ranked_leads.csv` yet
+  (`rank_dfw_leads()` in `src/ranking/hot_lead_score.py` returns rows and saves nothing). Until Ahmed adds that writer,
+  every run reports "RANKING MISSING" and the `band == "hot"` / `eligible == "yes"` gate does not filter any row. The
+  gate starts to work in the first run after the file exists. This agent never writes that file.
+- **robots.txt (M4):** a redirect hop that comes while robots.txt itself is being fetched is part of that fetch and is
+  allowed; it does not start a new robots.txt fetch (this stopped a loop). An error on one site drops that site only.
+- **Retention (M8):** the date is the `YYYY-MM-DD` at the start of the file name (`2026-11-14_email.txt` too). Folders
+  are not deleted; they are reported.
+- **Quotes (M2):** Script B also rejects single quote marks (`'`, `‘`, `’`) that are not an apostrophe inside a word.
+- **Raw page text:** `.work/<date>_pages.json` and `_model.json` hold raw or redacted page text. Script B deletes both
+  as soon as the CSV is written, and Script A deletes `.work` files from an earlier day. So page text stays at most 7
+  days (a failed run), and the LIA and Article 14 notice say so.
+
 ## Required task prompt (M6)
 
 The scheduled task `agent-8-sales-researcher` must contain this exact line. Ahmed sets it by hand; you never edit
@@ -84,13 +101,15 @@ the task:
 
 Run Script A. It:
 
-- deletes `data/outreach/*.csv`, `*_email.txt` and `.work/*` files older than 6 months (the date in the file name,
-  else the file's change time).
-  Rule: LIA line 142 (`docs/compliance/legitimate-interests-assessment.md`, Safeguards, "Retention" row);
+- deletes `data/outreach/*.csv`, `*_email.txt` and `.work/*` files older than 6 months (the `YYYY-MM-DD` at the
+  start of the file name, else the file's change time). Rule: LIA line 143
+  (`docs/compliance/legitimate-interests-assessment.md`, Safeguards, "Retention" row). It also deletes `.work` files
+  from an earlier day (raw page text, at most 7 days);
 - loads the newest call list (`data/logs/*_call_list*.csv`, not `*_emails.csv`), the newest reverse lookup
   (`data/leads/*_reverse_lookup_full_v*.csv`, not `*_domains*`), the newest auto lookup
   (`data/logs/*_lookup_auto*.csv`) and the ranking file `data/logs/<YYYY-MM>_ranked_leads.csv` for **this month**. If
-  that file is missing, or only an older month's file exists, the rows are not ranked and the email says so;
+  that file is missing, or only an older month's file exists, the rows are not ranked and the email says so. **No
+  code writes that file yet, so today the hot/eligible gate is off** (Spec changes, second audit of 981c4a2);
 - keeps a row only if: `may_go_to_outreach()` is true, the licence is not on the do-not-contact list (all call lists
   and call logs, `do_not_contact_list()`), `entity_flag == "likely_corporate"` (from `data/leads/tdlr_hvac_dfw.csv`),
   and, when this month's ranking file exists, `band == "hot"` **and** `eligible == "yes"`;
@@ -107,6 +126,7 @@ import csv, glob, html, json, re, sys
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.robotparser import RobotFileParser
 sys.path.insert(0, "src")
 import leads.website_contacts as wc
 from leads.identity_label import VERIFIED, identity_label, may_go_to_outreach
@@ -130,12 +150,16 @@ assert WORDS.exists(), "STOP: /usr/share/dict/words is missing; the name checks 
 DICT = {w for w in WORDS.read_text().split() if w.islower()} if WORDS.exists() else set()
 ENGLISH = DICT - REDACT
 
-# Retention: delete outreach CSVs older than 6 months (LIA line 142, Safeguards "Retention").
-for p in [*OUT.glob("*.csv"), *OUT.glob("*_email.txt"), *WORK.glob("*")]:  # .work keeps raw text after dry runs
-    made = (date.fromisoformat(p.stem) if re.fullmatch(r"\d{4}-\d\d-\d\d", p.stem)
-            else date.fromtimestamp(p.stat().st_mtime))
+# Retention: delete outreach CSVs older than 6 months (LIA line 143, Safeguards "Retention").
+for p in [*OUT.glob("*.csv"), *OUT.glob("*_email.txt"), *WORK.glob("*")]:
+    if not p.is_file():
+        print(f"RETENTION skipped folder {p.name}: not deleted, report it"); continue
+    dated = re.match(r"\d{4}-\d\d-\d\d", p.name)  # "2026-11-14_email.txt" -> 2026-11-14
+    made = date.fromisoformat(dated[0]) if dated else date.fromtimestamp(p.stat().st_mtime)
     if made < TODAY - timedelta(days=183):
         p.unlink(); print(f"RETENTION deleted {p.name} (older than 6 months)")
+    elif p.parent == WORK and made < TODAY:  # raw page text from a failed or dry run: at most 7 days
+        p.unlink(); print(f"RETENTION deleted .work/{p.name} (page text from an earlier run)")
 
 def natural(p): return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", p)]
 def files(pattern, exclude=()): return sorted((p for p in glob.glob(pattern, recursive=True)
@@ -157,7 +181,8 @@ if RANK.exists():
 else:
     ranked = None
     ranking_note = (f"RANKING OUT OF DATE: newest is {older[-1]}, this month needs {RANK.name}. Leads are not ranked."
-                    if older else f"RANKING MISSING: {RANK.name} not found in data/logs. Leads are not ranked.")
+                    if older else f"RANKING MISSING: {RANK.name} not found in data/logs. Leads are not ranked "
+                    "(the hot/eligible gate is off until code writes this file).")
 
 with open("data/leads/tdlr_hvac_dfw.csv", newline="", encoding="utf-8") as f:
     reader = csv.reader(f); header = next(reader)
@@ -205,7 +230,11 @@ robots_cache = {}
 def robots_ok(url):
     origin = "{0.scheme}://{0.netloc}".format(urlsplit(url))
     if origin not in robots_cache:
-        robots_cache[origin] = _robots_for(origin + "/", http_get)
+        robots_cache[origin] = RobotFileParser(); robots_cache[origin].allow_all = True  # hops of this robots.txt fetch
+        try:  # (robots.txt -> "/" looped before)
+            robots_cache[origin] = _robots_for(origin + "/", http_get)
+        except BaseException:
+            del robots_cache[origin]; raise  # never keep the allow-all placeholder
     return robots_cache[origin].can_fetch(ROBOTS_TOKEN, url)
 class RobotsOnEveryHop:
     def __init__(self, inner): self.inner = inner
@@ -233,11 +262,17 @@ NOT_NAME = {"llc", "inc", "co", "company", "heating", "air", "cooling", "plumbin
 FIRM = {"llc", "llp", "pllc", "inc", "corp", "co", "ltd", "lp", "group", "partners", "associates", "company"}
 REVIEW = re.compile(r"\b(?:reviews?|reviewed|testimonials?|recommend\w*|stars?|rated)\b|★", re.I)  # not "operated"
 PLACE = {"county", "texas", "tx", "dfw", "metroplex"}
+# "Co-Founder", "Vice President", "Assistant General Manager", "Former Owner" are not one of the 6 roles (F1)
+TITLED = re.compile(r"(?i)(?:[-‐‑]|\b(?:co|vice|assistant|asst\.?|associate|deputy|former|past|previous|retired|late|"
+                    r"interim|acting|regional|area|district|branch|store|sales|service|office|junior)\s+)$")
 def find_person(pages):
     # shortcut: text patterns only ("Jo Doe, Owner", "Owner: Jo Doe", "founded by Jo Doe"); JSON-LD Person is not read
     for page in pages:
         for pat in PERSON:
             for m in pat.finditer(page["text"]):
+                at = m.start("role") if "role" in pat.groupindex else m.start()  # "Co-founded by" too
+                if TITLED.search(page["text"][max(0, at - 30):at]):
+                    continue
                 words = m["name"].split()
                 if {w.lower().strip(".,") for w in words} & FIRM:
                     continue  # "Grant Thornton LLP" is a firm
@@ -302,6 +337,8 @@ for i, r in enumerate(kept):
                 pass
     except SiteUnreadable as e:
         dropped.append((r["licence_key"], "site unreadable: " + e.reason)); continue
+    except Exception as e:  # one bad site never stops the weekly run
+        dropped.append((r["licence_key"], "site error: " + type(e).__name__)); continue
     person, role, person_url = find_person(pages)
     researched.append(r | {"lead_id": f"L{len(researched) + 1:02d}", "website": home.url, "pages": pages,
                            "named_person": person, "role": role, "person_source_url": person_url})
@@ -333,7 +370,8 @@ Script B turns `fact_page` into `fact_source_url`. Leave out a lead that has no 
 
 ## Step 3 · Build the CSV, check it and build the email (Script B)
 
-Run Script B. It writes `data/outreach/<YYYY-MM-DD>.csv`, checks it and prints the email. If a check fails, fix
+Run Script B. It checks the rows and the email, then writes `data/outreach/<YYYY-MM-DD>.csv`, deletes the page text
+(`_pages.json`, `_model.json`) and prints the email. If a check fails, fix
 `_facts.json` and run it again. Do not send the email until Script B prints `CHECKS PASSED`.
 
 ```bash
@@ -400,7 +438,8 @@ if __name__ == "__main__":  # a test can exec the lines above alone
         assert bool(line) == bool(r["fact_source_url"]), f"{lid}: fact without a source"
         if line:
             assert re.match(r"Your?\b", line), f"{lid}: the line must start with You / Your"
-            assert not re.search(r"[\"“”]", line), f"{lid}: no quotes in the line (review-quote ban)"
+            assert not re.search(r"[\"“”‘„«»]|(?<![A-Za-z])['’]|['’](?![A-Za-z])", line), \
+                f"{lid}: no quotes in the line (review-quote ban); an apostrophe inside a word is fine"
             assert r["business"].lower() not in line.lower(), f"{lid}: the business name is in the line"
             hits = name_hits(line, rows)  # F5: checked against ALL rows
             assert not hits, f"{lid}: name tokens {hits} in the opening line; rewrite it"
@@ -427,6 +466,8 @@ if __name__ == "__main__":  # a test can exec the lines above alone
     # written only after every check passes, so a failed run does not mark businesses as researched
     with open(f"data/outreach/{TODAY}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, COLUMNS); w.writeheader(); w.writerows(rows)
+    for raw in (f"{TODAY}_pages.json", f"{TODAY}_model.json"):  # page text is not kept once the CSV exists
+        Path(f"data/outreach/.work/{raw}").unlink(missing_ok=True)
     print("CHECKS PASSED\n\nSUBJECT: " + subject + "\n\n" + body)
 EOF
 ```
@@ -435,10 +476,11 @@ EOF
 
 Send the printed subject and body as plain text with the Gmail connector (`send_message`), `to` = the user's own
 address only (hard rule 9). If no Gmail tool is available, write the email to `data/outreach/<date>_email.txt` and
-stop. Then delete `data/outreach/.work/<date>_pages.json`, `_model.json` and `_facts.json` (they hold page text) and
+stop. Script B has already deleted `.work/<date>_pages.json` and `_model.json`; delete `.work/<date>_facts.json` and
 end the run. Do not commit; `data/` is not in Git.
 
-A dry run (an audit) stops after Step 3: it sends nothing and keeps the `.work` files.
+A dry run (an audit) stops after Step 3: it sends nothing. Script B has deleted the page text; `_facts.json` stays
+until the next run.
 
 ## First-name list (Scripts A and B read this block)
 
