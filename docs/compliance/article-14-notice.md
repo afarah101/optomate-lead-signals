@@ -52,9 +52,16 @@ sole traders.
 The licence register also lists the licence holder's name. We do not use it, and we are removing it from our records.
 
 **What we never collect or use.** Email addresses that are guessed, built from a pattern or bought; personal mobile
-numbers; review text (our tool reads up to 2 pages of your website, which can show reviews, but it never stores
-or uses review text, and it deletes that page text within 7 days); anything collected automatically from social
-media; and call recordings. We do not record calls.
+numbers; review text in our records or emails; anything collected automatically from social media; and call
+recordings. We do not record calls.
+
+**Your website's text.** Our research tool reads up to 2 pages of your website, which can show reviews and the names
+of your customers. It keeps only the page addresses, not the page text. For one research step it makes a temporary
+copy of the text (at most 5,000 characters per page) with names, quoted passages and the parts that look like
+reviews removed; this removal is automatic, so a review that does not look like one can stay in the copy. An AI model
+reads that copy only to pick one fact about your business for our first email (never a review or a customer's
+words). The copy is deleted in the same run; if a run stops early, it is deleted at the start of the next weekly run.
+Provider of that AI model: *[TO CONFIRM]*.
 
 **Where it comes from.** Public business registers (TDLR), the business's own website, and open map datasets. All are
 publicly available. We can give the exact names on request.
