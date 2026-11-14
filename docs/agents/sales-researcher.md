@@ -90,6 +90,18 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
   as soon as the CSV is written, and Script A deletes `.work` files from an earlier day. So page text stays at most 7
   days (a failed run), and the LIA and Article 14 notice say so.
 
+## Spec changes (2026-11-14, audit of 9b43910)
+
+- **Redaction (C):** a word with a letter outside A-Z ("Raúl", "muñoz") is always `[name]`, in any case. A single
+  capitalised English word stays only at a sentence start or if the page also has it in lower case ("Thanks to Hope"
+  -> `[name]`). Place words that are also surnames (the `surname-places` list) stay only inside a place name. First
+  names that are also English words (hope, rose, faith, …) are on the first-name list. Left on purpose: an
+  English-word surname at a sentence start ("Smith fixed it.") and a lower-case name that is not on a list.
+- **Opening line (M, Script B):** also refused for a letter outside A-Z, a lower-case word that is not a plain English
+  word, a surname-place used outside a place name ("Your tech Johnson"), and the name of **any** row's business, with
+  or without LLC, Inc and similar, or one of its unusual words. "metro" is added to the DFW-word list.
+- **robots.txt loop (M):** fixed by the placeholder in the second 981c4a2 fix (`fe0f4b4`); no further change.
+
 ## Required task prompt (M6)
 
 The scheduled task `agent-8-sales-researcher` must contain this exact line. Ahmed sets it by hand; you never edit
@@ -143,12 +155,21 @@ DOC = Path("docs/agents/sales-researcher.md").read_text(encoding="utf-8")
 GROUPS = [l.split() for l in re.search(r"<!-- first-names -->\n```text\n(.*?)```", DOC, re.S)[1].lower().splitlines()]
 FIRST = {w for g in GROUPS for w in g}
 OK_WORDS = set(re.search(r"<!-- ok-words -->\n```text\n(.*?)```", DOC, re.S)[1].split())
+SURNAME_PLACES = set(re.search(r"<!-- surname-places -->\n```text\n(.*?)```", DOC, re.S)[1].split())
 PROPER = Path("/usr/share/dict/propernames")  # macOS first names: more redaction in the model copy only
 REDACT = FIRST | (set(PROPER.read_text().lower().split()) - {"the"} if PROPER.exists() else set())  # the list has "The"
 WORDS = Path("/usr/share/dict/words")  # lower-case entries only: plain English words, never proper nouns
 assert WORDS.exists(), "STOP: /usr/share/dict/words is missing; the name checks need it"
-DICT = {w for w in WORDS.read_text().split() if w.islower()} if WORDS.exists() else set()
+DICT = {w for w in WORDS.read_text().split() if w.islower()} | {"has"}  # "has" is not in the macOS list
 ENGLISH = DICT - REDACT
+def stems(w):  # the word and its stems for real endings only ("located" -> "locate"), each 3+ letters
+    out = {w}
+    for end, add in (("s", ""), ("es", ""), ("ies", "y"), ("ed", ""), ("ed", "e"), ("d", ""), ("ing", ""),
+                     ("ing", "e"), ("ly", ""), ("er", ""), ("ers", "")):
+        if w.endswith(end) and len(w) - len(end) >= 3:
+            out.add(w[:-len(end)] + add)
+    return out
+def english(w): return bool(stems(w) & ENGLISH)  # "located", "serving", "communities"
 
 # Retention: delete outreach CSVs older than 6 months (LIA line 143, Safeguards "Retention").
 for p in [*OUT.glob("*.csv"), *OUT.glob("*_email.txt"), *WORK.glob("*")]:
@@ -287,6 +308,23 @@ def find_person(pages):
                 return " ".join(words), (m.groupdict().get("role") or "founder").lower(), page["url"]
     return "", "", ""
 
+SENTENCE = set(".!?:;·|•»>)]*–—-\"“(©")
+PART_ONLY = set("hill hills little grand north city cedar branch fort worth flower mound elm farmers haltom richland "
+                "royse".split())
+PLACE_LEAD = re.compile(r"\b(?:in|across|around|near|from|serves?|served|serving|covers?|covering|throughout)\s+$", re.I)
+def next_to_place(m):  # "Johnson County", "Cedar Hill", "Garland, TX", "May 2020", "Forney and Garland", "in Garland"
+    after, before, w = m.string[m.end():m.end() + 20], m.string[max(0, m.start() - 30):m.start()], m[0].lower()
+    def pair(o):  # two surname-places never vouch for each other ("Johnson Hill"), except a real pair ("Cedar Hill")
+        o = o.lower(); return o in OK_WORDS and (o not in SURNAME_PLACES or w in PART_ONLY and o in PART_ONLY)
+    nxt, prv = re.match(r"\s+([A-Z][a-z]+)", after), re.search(r"([A-Z][a-z]+)\s+$", before)
+    if any(x and pair(x[1]) for x in (nxt, prv)):
+        return True
+    if w in PART_ONLY:  # "Hill" alone is not a DFW place
+        return False
+    listed = re.search(r"([A-Z][a-z]+)(?:,\s*|\s+(?:and|or)\s+)$", before)  # "Forney and Garland"
+    return bool(listed and listed[1].lower() in OK_WORDS or re.match(r",?\s*(?:TX|Texas)\b|\s+\d", after)
+                or PLACE_LEAD.search(before))
+
 def tokens(name): return {t.strip(".,").lower() for t in [name, *name.split()] if len(t.strip(".,")) >= 2}
 def name_regex(words, tail=""):
     alts = "|".join(sorted(map(re.escape, words), key=len, reverse=True))
@@ -297,17 +335,32 @@ def redact(text, person, business):
     text = name_regex(REDACT | tokens(person), tail).sub("[name]", text)
     for t in (t for t in tokens(person) if len(t) >= 3):  # inside words too: "smithair.com" -> "[name]air.com"
         text = re.sub(re.escape(t), "[name]", text, flags=re.I)
+    # A word with a letter outside A-Z ("Raúl", "muñoz") is a name: the word lists are A-Z only (audit of 9b43910)
+    text = re.sub(r"[^\W\d_][\w'’-]*", lambda m: m[0] if m[0].replace("’", "").isascii() else "[name]", text)
     # Fail closed: a capitalised word that is not a plain English word, a DFW place or the firm's own name is
     # treated as a name ("Zorvana", "Okafor"). An English-word surname next to a name goes too ("[name] Baker").
     biz = {w.lower() for w in re.findall(r"[A-Za-z]+", business)}
+    lower_seen = set(re.findall(r"\b[a-z][a-z'’-]+", text))
     # A run of 2+ capitalised words ("Quill Smith") stays only if each word is a DFW word, a business-name word or is
     # also on this page in lower case ("Air Conditioning Repair").
-    seen = OK_WORDS | biz | set(re.findall(r"\b[a-z][a-z'’-]+", text))
-    text = re.sub(r"\b[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)+",
-                  lambda m: m[0] if all(w.lower() in seen for w in m[0].split()) else "[name]", text)
-    # shortcut: one English-word surname alone ("Smith said") or a lower-case name stays; the CSV keeps the real text
-    def plain(w): return w in ENGLISH or w in OK_WORDS or w in biz
-    text = re.sub(r"\b[A-Z][A-Za-z'’-]*", lambda m: m[0] if plain(m[0].lower().strip("'’-")) else "[name]", text)
+    seen = OK_WORDS | biz | lower_seen
+    def run(m):  # a sentence-start first word is judged as a plain word ("Since May 2020")
+        words, before = m[0].split(), m.string[max(0, m.start() - 30):m.start()].rstrip()
+        first_ok = (not before or before[-1] in SENTENCE) and english(words[0].lower())
+        return m[0] if all(w.lower() in seen or i == 0 and first_ok for i, w in enumerate(words)) else "[name]"
+    text = re.sub(r"\b[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)+", run, text)
+    def single(m):  # one capitalised word
+        w, before = m[0].lower().strip("'’-"), m.string[max(0, m.start() - 30):m.start()].rstrip()
+        if w in biz:
+            return m[0]
+        if w in OK_WORDS:  # a place word that is also a surname ("Johnson", "Hill") stays only inside a place name
+            return m[0] if w not in SURNAME_PLACES or next_to_place(m) else "[name]"
+        # an English word stays at a sentence start, or mid-sentence if the page also has it in lower case
+        # ("Thanks to Hope" -> [name] unless "hope" is on the page)
+        return m[0] if english(w) and (not before or before[-1] in SENTENCE or w in lower_seen) else "[name]"
+    # shortcut: an English-word surname at a sentence start ("Smith fixed it.") or a lower-case name not on the
+    # name lists stays; the CSV keeps the real text
+    text = re.sub(r"\b[A-Z][A-Za-z'’-]*", single, text)
     text = re.sub(r"\b[A-Z][a-z'’-]+\s+[A-Z]\.(?=\W|$)", "[name]", text)  # "Hope D.": how reviews are signed
     joined = r"[A-Z][A-Za-z'’-]*\.?"
     text = re.sub(rf"\[name\]\.?(?:\s+(?:\[name\]|{joined}))+|(?:{joined}\s+)+\[name\]", "[name]", text)  # "Mr. Johnson"
@@ -402,9 +455,47 @@ def name_hits(text, rows):
     # every row's tokens + the whole first-name list, 2+ letters; a CSV name is never printed
     found = {m[0].lower() for m in name_regex(FIRST.union(*map(row_tokens, rows))).finditer(text)}
     return sorted(w if w in FIRST else "<a name from the CSV>" for w in found)
-def unknown_capitals(line):
+WORDS = {w for w in Path("/usr/share/dict/words").read_text().split() if w.islower()} | {"has"}  # as Script A
+SURNAME_PLACES = set(re.search(r"<!-- surname-places -->\n```text\n(.*?)```", DOC, re.S)[1].split())
+SUFFIX = r"\b(?:llc|l\.l\.c|inc|corp|co|ltd|lp|llp|pllc|company|the)\b\.?"
+PART_ONLY = set("hill hills little grand north city cedar branch fort worth flower mound elm farmers haltom richland "
+                "royse".split())
+PLACE_LEAD = re.compile(r"\b(?:in|across|around|near|from|serves?|served|serving|covers?|covering|throughout)\s+$", re.I)
+def next_to_place(m):  # the same rule as Script A
+    after, before, w = m.string[m.end():m.end() + 20], m.string[max(0, m.start() - 30):m.start()], m[0].lower()
+    def pair(o):  # two surname-places never vouch for each other ("Johnson Hill"), except a real pair ("Cedar Hill")
+        o = o.lower(); return o in OK_WORDS and (o not in SURNAME_PLACES or w in PART_ONLY and o in PART_ONLY)
+    nxt, prv = re.match(r"\s+([A-Z][a-z]+)", after), re.search(r"([A-Z][a-z]+)\s+$", before)
+    if any(x and pair(x[1]) for x in (nxt, prv)):
+        return True
+    if w in PART_ONLY:  # "Hill" alone is not a DFW place
+        return False
+    listed = re.search(r"([A-Z][a-z]+)(?:,\s*|\s+(?:and|or)\s+)$", before)  # "Forney and Garland"
+    return bool(listed and listed[1].lower() in OK_WORDS or re.match(r",?\s*(?:TX|Texas)\b|\s+\d", after)
+                or PLACE_LEAD.search(before))
+def stems(w):  # the word and its stems for real endings only ("located" -> "locate"), each 3+ letters
+    out = {w}
+    for end, add in (("s", ""), ("es", ""), ("ies", "y"), ("ed", ""), ("ed", "e"), ("d", ""), ("ing", ""),
+                     ("ing", "e"), ("ly", ""), ("er", ""), ("ers", "")):
+        if w.endswith(end) and len(w) - len(end) >= 3:
+            out.add(w[:-len(end)] + add)
+    return out
+def known(w):  # a plain word ("communities", "served") or a two-word compound ("firefighter")
+    return bool(stems(w) & WORDS) or any(w[:i] in WORDS and w[i:] in WORDS for i in range(3, len(w) - 2))
+def line_problems(line, rows):
     words = re.findall(r"[A-Za-z]+", line)
-    return [w for w in words[1:] if w[0].isupper() and w.lower() not in OK_WORDS]
+    bad = [] if re.sub(r"[—–’·]", "", line).isascii() else ["letters outside A-Z (a name?)"]
+    bad += [w for w in words[1:] if w[0].isupper() and w.lower() not in OK_WORDS]
+    bad += [m[0] for m in re.finditer(r"\b[A-Z][a-z]+", line) if m[0].lower() in SURNAME_PLACES
+            and not next_to_place(m)]  # "Our tech Johnson" is a person
+    bad += [w for w in words if w[0].islower() and w not in OK_WORDS and not known(w)]  # "our tech zorvana"
+    low = {w.lower() for w in words}
+    for r in rows:  # every row's business name, without LLC, and each of its unusual words
+        core = re.sub(r"\s+", " ", re.sub(SUFFIX, " ", r["business"].lower())).strip(" ,.&")
+        odd = {w for w in re.findall(r"[a-z]+", core) if len(w) >= 3 and w not in OK_WORDS and not known(w)}
+        if core and re.search(rf"\b{re.escape(core)}\b", line.lower()) or odd & low:
+            bad.append("<a business name>")
+    return bad
 
 if __name__ == "__main__":  # a test can exec the lines above alone
     work = json.loads(Path(f"data/outreach/.work/{TODAY}_pages.json").read_text())
@@ -443,8 +534,8 @@ if __name__ == "__main__":  # a test can exec the lines above alone
             assert r["business"].lower() not in line.lower(), f"{lid}: the business name is in the line"
             hits = name_hits(line, rows)  # F5: checked against ALL rows
             assert not hits, f"{lid}: name tokens {hits} in the opening line; rewrite it"
-            odd = unknown_capitals(line)
-            assert not odd, f"{lid}: capitalised words {odd} are not in OK_WORDS (a name?); rewrite the line"
+            odd = line_problems(line, rows)
+            assert not odd, f"{lid}: {odd} in the opening line (a name or a business name?); rewrite the line"
 
     subject = f"[Agent] Sales Researcher · wk {TODAY.day} {TODAY:%b} · {len(rows)} leads"
     lines = [f"{r['lead_id']} · {l['trade']} · {l['town']} · {r['why_hot']} · "
@@ -588,6 +679,7 @@ wesley curtis clint clayton colton cole dale darrell glenn glen gordon grant hea
 joel lance lee leroy lloyd luke mason max mitchell neil norman owen preston rex rodney ross shane spencer stanley
 todd trent trevor tristan ty tyrone wade warren earl ernest floyd herbert howard marvin melvin dwayne darren
 duane irving dallas parker ellis collin bo jo cy
+hope rose faith joy ruby pearl iris ivy daisy lily violet autumn summer
 ```
 
 ## DFW-word list (Scripts A and B read this block)
@@ -598,10 +690,22 @@ fail closed.
 
 <!-- ok-words -->
 ```text
-collin dallas denton ellis johnson kaufman parker rockwall tarrant county texas tx dfw metroplex north
+collin dallas denton ellis johnson kaufman parker rockwall tarrant county texas tx dfw metroplex metro north
 fort worth arlington plano garland irving grand prairie mckinney frisco mesquite carrollton richardson lewisville
 flower mound mansfield euless bedford grapevine southlake coppell rowlett wylie desoto cedar hill duncanville
 burleson weatherford waxahachie cleburne midlothian forney terrell argyle haltom city hurst colleyville sachse
 little elm azle granbury royse benbrook saginaw watauga richland hills aledo roanoke corinth addison farmers branch
 january february march april may june july august september october november december hvac
+```
+
+Place words from the list above that are also surnames or months. Script A keeps them in the model copy, and
+Script B allows them in an opening line, only next to another place word, before ", TX" or "Texas", before a
+number, or after "in", "serves", "across" and similar words ("Johnson County", "Cedar Hill", "Garland, TX",
+"May 2020", "Forney and Garland", "serves Wylie").
+
+<!-- surname-places -->
+```text
+johnson hill hills little grand north city cedar branch fort worth flower mound elm farmers mansfield bedford
+richardson garland terrell forney wylie hurst addison burleson rowlett coppell benbrook cleburne granbury royse
+colleyville saginaw watauga euless argyle aledo roanoke corinth haltom richland may june april august
 ```
