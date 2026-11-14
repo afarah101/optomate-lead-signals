@@ -19,8 +19,9 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
    1 request per second, the honest User-Agent. Script A does this with `src/leads/website_contacts.py`
    (`http_get`, `_robots_for`). robots.txt is a rule file, not a page. Never fetch a page with your own tools.
 6. Personal data (the named person) stays in `data/` only. Never put a person's name in the email.
-7. The named person must be shown on the business's own site as **owner, co-owner, founder, president, CEO or general
-   manager**, with that role. Never a technician, a staff list entry, a customer or a reviewer. Never a person's
+7. The named person must be shown on the business's own site as an **owner or a manager** (owner, co-owner, founder,
+   co-founder, president, CEO, or any role with the word "manager", e.g. general / service / operations manager),
+   with that role. Never a technician, a staff list entry, a customer or a reviewer. Never a person's
    direct phone or email. If no such person is shown, leave `named_person`, `role` and `person_source_url` empty.
 8. The opening-line fact: **one** fact from the own site (service area, years trading, a recent project, an award,
    a family business since a year). Rules from `docs/decisions/lookup-automation.md` (2026-10-29 "Facts for a
@@ -28,6 +29,9 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
    - store its page in `fact_source_url`; a fact without a source is never used;
    - **no review or testimonial quotes** (they can be Google review text, and they name private customers);
    - no social media; nothing from Google, Foursquare or Overture listings.
+   - The opening line contains **no person's name of any kind** (owner, staff, customer, nickname). It starts with
+     "You" or "Your". Script B accepts other capitalised words only from its `OK_WORDS` list (DFW places, months,
+     HVAC); if a place is not on that list, use the county or "your area".
    - The opening line never contains the named person's name, and it uses "you" / "your team", not the business
      name (a business name can hold the person's surname). It is one sentence, true, and not pushy.
 9. Email Ahmed only: the **own address of the Gmail account that the Gmail connector is signed in to** (the user's
@@ -190,7 +194,15 @@ from leads.identity_label import may_go_to_outreach
 TODAY = date.today()
 COLUMNS = ["business", "website", "named_person", "role", "person_source_url", "opening_line", "why_hot",
            "phone_source", "fact_source_url"]
-ROLES = {"owner", "co-owner", "founder", "co-founder", "president", "ceo", "general manager", "owner and founder"}
+ROLE = re.compile(r"\b(owner|co-owner|founder|co-founder|president|ceo|manager)\b", re.I)  # hard rule 7
+# Capitalised words allowed in an opening line. Place names that are also first names (Allen, Justin, Keller,
+# Murphy, Heath, Crowley, Lancaster, Celina, Prosper) are left out on purpose, so the check fails closed.
+OK_WORDS = set("""collin dallas denton ellis johnson kaufman parker rockwall tarrant county texas tx dfw metroplex north
+fort worth arlington plano garland irving grand prairie mckinney frisco mesquite carrollton richardson lewisville
+flower mound mansfield euless bedford grapevine southlake coppell rowlett wylie desoto cedar hill duncanville
+burleson weatherford waxahachie cleburne midlothian forney terrell argyle haltom city hurst colleyville sachse
+little elm azle granbury royse benbrook saginaw watauga richland hills aledo roanoke corinth addison farmers branch
+january february march april may june july august september october november december hvac""".split())
 work = Path(f"data/outreach/.work/{TODAY}_pages.json")
 researched = {r["business"]: r for r in json.loads(work.read_text())}
 with open(f"data/outreach/{TODAY}.csv", newline="", encoding="utf-8") as f:
@@ -199,7 +211,11 @@ assert reader.fieldnames == COLUMNS, f"columns are {reader.fieldnames}"
 assert len(rows) <= 15, f"{len(rows)} rows: max 15"
 
 def name_tokens(r): return [t.strip(".,") for t in [r["named_person"], *r["named_person"].split()]
-                            if len(t.strip(".,")) >= 3]
+                            if len(t.strip(".,")) >= 2]  # single initials are skipped
+def unknown_capitals(line):
+    # shortcut: a name written in lower case ("ask mike") is not caught; upgrade if lines stop being proper sentences
+    words = re.findall(r"[A-Za-z]+", line)
+    return [w for w in words[1:] if w[0].isupper() and w.lower() not in OK_WORDS]
 def has_name(r, text): return any(re.search(rf"\b{re.escape(t)}\b", text, re.I) for t in name_tokens(r))
 
 for r in rows:
@@ -213,11 +229,15 @@ for r in rows:
         assert not r[col] or r[col] in urls, f"{r['business']}: {col} is not a fetched page"
     assert bool(r["named_person"]) == bool(r["role"]) == bool(r["person_source_url"]), f"{r['business']}: person fields"
     if r["named_person"]:
-        assert r["role"].lower() in ROLES, f"{r['business']}: role {r['role']!r} is not allowed (hard rule 7)"
+        assert ROLE.search(r["role"]), f"{r['business']}: role {r['role']!r} is not allowed (hard rule 7)"
         page = next(p["text"] for p in src["pages"] if p["url"] == r["person_source_url"])
         assert r["named_person"].lower() in page.lower(), f"{r['business']}: name not on its source page"
     assert bool(r["opening_line"]) == bool(r["fact_source_url"]), f"{r['business']}: fact without a source"
     assert not has_name(r, r["opening_line"]), f"{r['business']}: name in the opening line"
+    if r["opening_line"]:
+        assert re.match(r"Your?\b", r["opening_line"]), f"{r['business']}: the line must start with You / Your"
+        odd = unknown_capitals(r["opening_line"])
+        assert not odd, f"{r['business']}: capitalised words {odd} are not in OK_WORDS (a name?); rewrite the line"
 
 subject = f"[Agent] Sales Researcher · wk {TODAY.day} {TODAY:%b} · {len(rows)} leads"
 lines = [f"{i}. {r['business']} · {r['why_hot']} · {r['opening_line'] or '(no own-site fact found)'}"
