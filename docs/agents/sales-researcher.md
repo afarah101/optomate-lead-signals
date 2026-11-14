@@ -33,7 +33,7 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
    - no social media; nothing from Google, Foursquare or Overture listings;
    - the line contains **no person's name of any kind** (owner, staff, customer, nickname) and no word from the
      first-name list at the end of this file. It does not contain the business name. It starts with "You" or "Your".
-     Other capitalised words are allowed only from Script B's `OK_WORDS` list (DFW places, months, HVAC); if a place
+     Other capitalised words are allowed only from the DFW-word list at the end of this file; if a place
      is not on that list, use the county or "your area". It is one sentence, true, and not pushy.
 9. Email Ahmed only: the **own address of the Gmail account that the Gmail connector is signed in to** (the user's
    own email in your context). No other recipient, no cc, no bcc. If you cannot tell that address, do not send.
@@ -56,6 +56,22 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
 - **Retention (M8):** each run starts by deleting `data/outreach/*.csv`, `*_email.txt` and `.work/*` files older
   than 6 months.
 - **No actions (M9):** with no follow-up tasks, the email says "No actions this week" and has no A-line.
+
+## Spec changes (2026-11-14, audit of 981c4a2)
+
+- **Redaction fails closed:** in the model copy, every capitalised word that is not a plain English word, a word from
+  the DFW-word list or a word of the business name becomes `[name]`. So do a word with a signed initial ("Hope D.")
+  and a capitalised word next to `[name]`. The model sees less text, but no unlisted name.
+- **Throttle:** when robots.txt is fetched for a hop, the hop waits again, so every request is 1 second or more after
+  the one before.
+- **Named person:** refused if it is in review or testimonial text (300 characters each side), ends in an initial,
+  includes a firm word (LLC, LLP, group, …), a place word (county, Texas, TX, DFW, metroplex), only DFW places, or
+  only plain English words. Fewer leads get a name; Ahmed finds the rest by hand (the A-line).
+- **Town:** the TDLR `city` column is used when it has a value. On 2026-11-14 it is empty for all 2,122
+  likely_corporate rows, so the email shows the county (for example "Tarrant County").
+- **Not in the ticket, disclosed here:** a business in an outreach CSV from the last 28 days is skipped, and at most
+  25 sites are tried per run, so a run with many unreadable sites can have fewer than 15 leads.
+- **Schedule:** the task runner adds a fixed delay of up to about 15 minutes, so the 07:47 run starts at about 08:01.
 
 ## Required task prompt (M6)
 
@@ -106,8 +122,13 @@ ROLES = "co-owner|owner|founder|president|ceo|general manager"  # hard rule 7: e
 DOC = Path("docs/agents/sales-researcher.md").read_text(encoding="utf-8")
 GROUPS = [l.split() for l in re.search(r"<!-- first-names -->\n```text\n(.*?)```", DOC, re.S)[1].lower().splitlines()]
 FIRST = {w for g in GROUPS for w in g}
+OK_WORDS = set(re.search(r"<!-- ok-words -->\n```text\n(.*?)```", DOC, re.S)[1].split())
 PROPER = Path("/usr/share/dict/propernames")  # macOS first names: more redaction in the model copy only
 REDACT = FIRST | (set(PROPER.read_text().lower().split()) - {"the"} if PROPER.exists() else set())  # the list has "The"
+WORDS = Path("/usr/share/dict/words")  # lower-case entries only: plain English words, never proper nouns
+assert WORDS.exists(), "STOP: /usr/share/dict/words is missing; the name checks need it"
+DICT = {w for w in WORDS.read_text().split() if w.islower()} if WORDS.exists() else set()
+ENGLISH = DICT - REDACT
 
 # Retention: delete outreach CSVs older than 6 months (LIA line 142, Safeguards "Retention").
 for p in [*OUT.glob("*.csv"), *OUT.glob("*_email.txt"), *WORK.glob("*")]:  # .work keeps raw text after dry runs
@@ -141,8 +162,8 @@ else:
 with open("data/leads/tdlr_hvac_dfw.csv", newline="", encoding="utf-8") as f:
     reader = csv.reader(f); header = next(reader)
     assert not {"licence_holder", "owner_name"} & set(header), "STOP: leads file has a licence holder column"
-    li, ei, ti, ci = (header.index(c) for c in ("licence_number", "entity_flag", "licence_type", "county"))
-    tdlr = {key(r[li]): {"entity": r[ei], "trade": r[ti], "county": r[ci]} for r in reader}
+    li, ei, ti, ci, yi = (header.index(c) for c in ("licence_number", "entity_flag", "licence_type", "county", "city"))
+    tdlr = {key(r[li]): {"entity": r[ei], "trade": r[ti], "county": r[ci], "city": r[yi].strip()} for r in reader}
 
 logged = [r for p in call_lists + files("data/logs/*call_log*.csv") for r in rows(p)]
 blocked = {key(l) for l in do_not_contact_list(logged)}
@@ -172,7 +193,8 @@ for r in call_list:
     phone_source = src.get("phone_source") or ("site" if src.get("phone_source_url") else "")
     why = (f"score {rk['score']}/3, band hot ({RANK.name})" if ranked is not None
            else "not ranked: no ranking file for this month; verified + likely_corporate")
-    town = f"{t['county'].title()} County" if t["county"].lower() in COUNTIES else "DFW"
+    # TDLR "city" is empty for every likely_corporate row (0 of 2,122 on 2026-11-14), so the town is the county
+    town = t["city"].title() if t["city"] else f"{t['county'].title()} County" if t["county"].lower() in COUNTIES else "DFW"
     kept.append({"licence_key": k, "business": name, "website": src["website_url"], "identity_label": lab,
                  "phone_source": phone_source, "why_hot": why, "trade": t["trade"] or "HVAC", "town": town,
                  "score": int(rk["score"]) if ranked is not None else 0})
@@ -188,8 +210,12 @@ def robots_ok(url):
 class RobotsOnEveryHop:
     def __init__(self, inner): self.inner = inner
     def open(self, request, timeout=None):
-        if urlsplit(request.full_url).path != "/robots.txt" and not robots_ok(request.full_url):
-            raise SiteUnreadable("robots_blocked")
+        if urlsplit(request.full_url).path != "/robots.txt":
+            fetched = "{0.scheme}://{0.netloc}".format(urlsplit(request.full_url)) not in robots_cache
+            if not robots_ok(request.full_url):
+                raise SiteUnreadable("robots_blocked")
+            if fetched:  # http_get waited before this hop, then robots.txt was fetched: wait again (1 request/s)
+                wc._THROTTLE.wait()
         return self.inner.open(request, timeout=timeout)
 wc._OPENER = RobotsOnEveryHop(wc._OPENER)
 
@@ -204,29 +230,53 @@ PERSON = [re.compile(rf"(?P<name>{NAME})\s*[,|(–—-]\s*(?:[Tt]he\s+)?\b(?P<ro
 NOT_NAME = {"llc", "inc", "co", "company", "heating", "air", "cooling", "plumbing", "services", "service", "hvac",
             "mechanical", "conditioning", "ac", "and", "the", "our", "owner", "founder", "president", "ceo",
             "general", "manager"}
+FIRM = {"llc", "llp", "pllc", "inc", "corp", "co", "ltd", "lp", "group", "partners", "associates", "company"}
+REVIEW = re.compile(r"\b(?:reviews?|reviewed|testimonials?|recommend\w*|stars?|rated)\b|★", re.I)  # not "operated"
+PLACE = {"county", "texas", "tx", "dfw", "metroplex"}
 def find_person(pages):
     # shortcut: text patterns only ("Jo Doe, Owner", "Owner: Jo Doe", "founded by Jo Doe"); JSON-LD Person is not read
     for page in pages:
         for pat in PERSON:
             for m in pat.finditer(page["text"]):
                 words = m["name"].split()
+                if {w.lower().strip(".,") for w in words} & FIRM:
+                    continue  # "Grant Thornton LLP" is a firm
                 while words and words[0].lower() not in FIRST: words.pop(0)  # "Meet Jo Doe" -> "Jo Doe"
                 while words and words[-1].lower().strip(".") in NOT_NAME: words.pop()
-                if len(words) >= 2:
-                    return " ".join(words), (m.groupdict().get("role") or "founder").lower(), page["url"]
+                low = [w.lower().strip(".") for w in words]
+                if (len(words) < 2 or len(low[-1]) == 1  # "Jo D." is how reviews are signed
+                        or set(low) & PLACE or set(low) <= OK_WORDS  # "Collin County", "Dallas Fort Worth"
+                        or set(low) <= DICT  # every word a plain English word: a phrase ("Will Power")
+                        or REVIEW.search(page["text"][max(0, m.start() - 300):m.end() + 300])):  # review text
+                    continue
+                return " ".join(words), (m.groupdict().get("role") or "founder").lower(), page["url"]
     return "", "", ""
 
 def tokens(name): return {t.strip(".,").lower() for t in [name, *name.split()] if len(t.strip(".,")) >= 2}
 def name_regex(words, tail=""):
     alts = "|".join(sorted(map(re.escape, words), key=len, reverse=True))
     return re.compile(rf"\b(?i:{alts})\b(?!\s+(?i:county)\b){tail}")  # "Parker County" is a place, not a name
-def redact(text, person):
+def redact(text, person, business):
     tail = r"(?:\s+[A-Z]\.)?(?:\s+[A-Z][A-Za-z'-]+){0,2}"  # also the surname after a first name
-    # shortcut: a name on neither list (e.g. a rare customer name in a review) stays; Script B never reads this copy
+    text = text[:MAX_CHARS]  # cut first, so a word cut in two is checked too
     text = name_regex(REDACT | tokens(person), tail).sub("[name]", text)
     for t in (t for t in tokens(person) if len(t) >= 3):  # inside words too: "smithair.com" -> "[name]air.com"
         text = re.sub(re.escape(t), "[name]", text, flags=re.I)
-    return text[:MAX_CHARS]
+    # Fail closed: a capitalised word that is not a plain English word, a DFW place or the firm's own name is
+    # treated as a name ("Zorvana", "Okafor"). An English-word surname next to a name goes too ("[name] Baker").
+    biz = {w.lower() for w in re.findall(r"[A-Za-z]+", business)}
+    # A run of 2+ capitalised words ("Quill Smith") stays only if each word is a DFW word, a business-name word or is
+    # also on this page in lower case ("Air Conditioning Repair").
+    seen = OK_WORDS | biz | set(re.findall(r"\b[a-z][a-z'’-]+", text))
+    text = re.sub(r"\b[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)+",
+                  lambda m: m[0] if all(w.lower() in seen for w in m[0].split()) else "[name]", text)
+    # shortcut: one English-word surname alone ("Smith said") or a lower-case name stays; the CSV keeps the real text
+    def plain(w): return w in ENGLISH or w in OK_WORDS or w in biz
+    text = re.sub(r"\b[A-Z][A-Za-z'’-]*", lambda m: m[0] if plain(m[0].lower().strip("'’-")) else "[name]", text)
+    text = re.sub(r"\b[A-Z][a-z'’-]+\s+[A-Z]\.(?=\W|$)", "[name]", text)  # "Hope D.": how reviews are signed
+    joined = r"[A-Z][A-Za-z'’-]*\.?"
+    text = re.sub(rf"\[name\]\.?(?:\s+(?:\[name\]|{joined}))+|(?:{joined}\s+)+\[name\]", "[name]", text)  # "Mr. Johnson"
+    return text
 
 researched = []
 for i, r in enumerate(kept):
@@ -259,7 +309,8 @@ for i, r in enumerate(kept):
 (WORK / f"{TODAY}_pages.json").write_text(json.dumps({"ranking_note": ranking_note, "leads": researched}, indent=1))
 (WORK / f"{TODAY}_model.json").write_text(json.dumps([
     {"lead_id": r["lead_id"], "trade": r["trade"], "town": r["town"],
-     "pages": [{"page": n, "text": redact(p["text"], r["named_person"])} for n, p in enumerate(r["pages"], 1)]}
+     "pages": [{"page": n, "text": redact(p["text"], r["named_person"], r["business"])}
+               for n, p in enumerate(r["pages"], 1)]}
     for r in researched], indent=1))
 print(f"call list {Path(call_lists[-1]).name}: {len(call_list)} rows; {ranking_note}")
 print(f"passed the gate: {len(kept)}; researched: {len(researched)}; named person found: "
@@ -297,17 +348,10 @@ TODAY = date.today()
 COLUMNS = ["lead_id", "business", "website", "named_person", "role", "person_source_url", "opening_line", "why_hot",
            "phone_source", "fact_source_url"]
 ROLES = {"owner", "co-owner", "founder", "president", "ceo", "general manager"}  # hard rule 7: exactly these 6
-# Capitalised words allowed in an opening line. Place names that are also first names (Allen, Justin, Keller,
-# Murphy, Heath, Crowley, Lancaster, Celina, Prosper) are left out on purpose, so the check fails closed.
-OK_WORDS = set("""collin dallas denton ellis johnson kaufman parker rockwall tarrant county texas tx dfw metroplex north
-fort worth arlington plano garland irving grand prairie mckinney frisco mesquite carrollton richardson lewisville
-flower mound mansfield euless bedford grapevine southlake coppell rowlett wylie desoto cedar hill duncanville
-burleson weatherford waxahachie cleburne midlothian forney terrell argyle haltom city hurst colleyville sachse
-little elm azle granbury royse benbrook saginaw watauga richland hills aledo roanoke corinth addison farmers branch
-january february march april may june july august september october november december hvac""".split())
 DOC = Path("docs/agents/sales-researcher.md").read_text(encoding="utf-8")
 GROUPS = [l.split() for l in re.search(r"<!-- first-names -->\n```text\n(.*?)```", DOC, re.S)[1].lower().splitlines()]
 FIRST = {w for g in GROUPS for w in g}
+OK_WORDS = set(re.search(r"<!-- ok-words -->\n```text\n(.*?)```", DOC, re.S)[1].split())
 
 def tokens(name): return {t.strip(".,").lower() for t in [name, *name.split()] if len(t.strip(".,")) >= 2}
 def row_tokens(r):  # the row's name tokens plus their nicknames ("Robert" -> "bob", "rob", ...)
@@ -375,7 +419,10 @@ if __name__ == "__main__":  # a test can exec the lines above alone
                       f"data/outreach/{TODAY}.csv only.", work["ranking_note"], "", *lines, "",
                       *(["ACTIONS — reply YES + number:", *[f"A{n} | none | {t} | S" for n, t in enumerate(tasks, 1)]]
                         if tasks else ["No actions this week"])])
-    hits = name_hits(subject + "\n" + body, rows)  # on the whole email, before anything is changed
+    for l in leads:  # the town is a TDLR register place ("Allen", "Dallas"), never a person: only its shape is checked
+        assert re.fullmatch(r"[A-Z][A-Za-z .'-]{1,39}", l["town"]), f"{l['lead_id']}: odd town value"
+    masked = "\n".join(line.replace(f" · {l['town']} · ", " · <town> · ", 1) for line, l in zip(lines, leads))
+    hits = name_hits(subject + "\n" + body.replace("\n".join(lines), masked), rows)  # whole email, nothing changed
     assert not hits, f"name tokens {hits} are in the email"
     # written only after every check passes, so a failed run does not mark businesses as researched
     with open(f"data/outreach/{TODAY}.csv", "w", newline="", encoding="utf-8") as f:
@@ -499,4 +546,20 @@ wesley curtis clint clayton colton cole dale darrell glenn glen gordon grant hea
 joel lance lee leroy lloyd luke mason max mitchell neil norman owen preston rex rodney ross shane spencer stanley
 todd trent trevor tristan ty tyrone wade warren earl ernest floyd herbert howard marvin melvin dwayne darren
 duane irving dallas parker ellis collin bo jo cy
+```
+
+## DFW-word list (Scripts A and B read this block)
+
+Capitalised words that an opening line may use, and that the model copy keeps. Place names that are also first names
+(Allen, Justin, Keller, Murphy, Heath, Crowley, Lancaster, Celina, Prosper) are left out on purpose, so the checks
+fail closed.
+
+<!-- ok-words -->
+```text
+collin dallas denton ellis johnson kaufman parker rockwall tarrant county texas tx dfw metroplex north
+fort worth arlington plano garland irving grand prairie mckinney frisco mesquite carrollton richardson lewisville
+flower mound mansfield euless bedford grapevine southlake coppell rowlett wylie desoto cedar hill duncanville
+burleson weatherford waxahachie cleburne midlothian forney terrell argyle haltom city hurst colleyville sachse
+little elm azle granbury royse benbrook saginaw watauga richland hills aledo roanoke corinth addison farmers branch
+january february march april may june july august september october november december hvac
 ```
