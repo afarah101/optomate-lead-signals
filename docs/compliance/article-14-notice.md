@@ -1,4 +1,4 @@
-# Privacy notice: how Optomate found your business (draft, updated 2026-10-29)
+# Privacy notice: how Optomate found your business (draft, updated 2026-11-14)
 
 UK GDPR Article 14 notice, for businesses whose details Optomate did not collect from them directly.
 Rules behind each statement: `docs/compliance/legitimate-interests-assessment.md`.
@@ -38,6 +38,8 @@ sole traders.
 - business name, TDLR licence number, licence expiry date and county;
 - the business phone number, contact-form page and email address (named or general) published on your own website,
   each with the page it came from, and your website address;
+- the name and role of a named owner or manager (owner, co-owner, founder, president, CEO or general manager),
+  only as shown on your own website, with the page it came from;
 - facts about your business taken from your own website or the TDLR register to personalise our first email, each
   with its source page;
 - map-listing IDs (a Google place ID and IDs from open map datasets);

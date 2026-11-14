@@ -1,12 +1,11 @@
-# Legitimate Interests Assessment: Optomate lead signals (draft, updated 2026-10-29)
+# Legitimate Interests Assessment: Optomate lead signals (draft, updated 2026-11-14)
 
 **Controller:** Optomate LTD, company number [COMPANY_NUMBER], registered office [REGISTERED_OFFICE].
 **Contact for data requests:** admin@optomate.co.uk.
 **Who handles the data:** Ahmed only. Only Ahmed sees the lists and makes the calls. No staff, VA or contractor.
 **Method:** the ICO three-part test: purpose, necessity, balancing.
 
-Every rule below is cited to the decision file that sets it (`docs/decisions/…`, `docs/templates/call_script.md`).
-Items marked **TO CONFIRM** are open and must not be filled from memory.
+Every rule below is cited to the decision file that sets it (`docs/decisions/…`, `docs/templates/call_script.md`). Items marked **TO CONFIRM** are open and must not be filled from memory.
 
 ---
 
@@ -38,6 +37,7 @@ name, so each business is confirmed by hand in the Texas Comptroller Taxable Ent
 | Contact-form URL | The contact page, if it has a message form | Own website | `lookup-automation.md`, "What is stored" |
 | **Named business email** | A named or generic address (for example `jane@` or `office@`), **only as published on the business's own website**, with the page it was on. *Rule only: no code collects it yet* | Own website | `lookup-automation.md`, 2026-10-29 "Outreach email address" |
 | **Opening-line facts** | Facts used in a personal opening line of an email, **each with its source URL**; only from the own website or TDLR data. *Rule only: no code yet* | Own website; TDLR open data | `lookup-automation.md`, 2026-10-29 "Facts for a personal opening line" |
+| **Named owner/manager name and role** | The name and role of one person, **only as shown on the business's own website**, with the page it was on. Role is one of owner, co-owner, founder, president, CEO, general manager. Found by code; never put in an email; never the TDLR licence holder | Own website | `docs/agents/sales-researcher.md`, hard rules 4, 6 and 7 |
 | Place identifiers | Google `place_id`; open map dataset record IDs (`source_record_id`, `source_datasets`, `fsq_place_id`) | Google; open map datasets | `lookup-automation.md`, "Google Places"; `open-places.md`, "What is stored"; `reverse-lookup.md`, "Output" |
 | Identity label | `verified` / `unverified` / `unresolved` | Derived | `lookup-automation.md`, 2026-10-28 "Identity label" |
 | Call outcome | `result` (`answered_by_person`, `voicemail`, `no_answer`, `invalid`), call date and time, time band, `voicemail_greeting_present` (evening only), `stop_requested`, short factual notes | First-party (Ahmed's call) | `signal-rules.md`, "Calls"; `call_script.md`; `call-list-plan.md`, "Call sheet" |
@@ -87,7 +87,7 @@ decided and waiting on a code change (`data-sources.md`, change log).
 
 | Question | Answer |
 |---|---|
-| Does each item help the purpose? | Licence number and name: they identify the business and prove identity on its own site (`lookup-automation.md`, "Accept a site by licence number"; `reverse-lookup.md`, "Join"). Phone and form URL: needed to take the call and form measurements. Call outcome and reply time: these *are* the signals (`signal-rules.md`). Website: the only accepted source of contact details. Business email: needed to send the outreach email. Opening-line facts: they make the email relevant to that business, and each one carries its source. |
+| Does each item help the purpose? | Licence number and name: they identify the business and prove identity on its own site (`lookup-automation.md`, "Accept a site by licence number"; `reverse-lookup.md`, "Join"). Phone and form URL: needed to take the call and form measurements. Call outcome and reply time: these *are* the signals (`signal-rules.md`). Website: the only accepted source of contact details. Business email: needed to send the outreach email. Named owner/manager name and role: the first email goes to a person who can decide, not to a general inbox. Opening-line facts: they make the email relevant to that business, and each one carries its source. |
 | Is there a less intrusive way? | Several steps already take the least intrusive option: only the business's own site counts, at most 2 pages are read (`lookup-automation.md`), there is one call and one form per month (`signal-rules.md`), voicemail is never left (`call_script.md`), Google data is not stored (`lookup-automation.md`), and email addresses are never guessed or bought (`lookup-automation.md`, 2026-10-29). |
 | Is anything held that isn't needed? | The licence holder name. Its removal is decided (`data-sources.md`, change log); the code change is pending. |
 | Is the call frequency proportionate? | Yes. **One call per business per calendar month at most**, every call counted, including `invalid` ones (`signal-rules.md`, "Frequency"; `call_script.md`). One form message per month at most (`signal-rules.md`, "Forms"). |
@@ -100,9 +100,9 @@ decided and waiting on a code change (`data-sources.md`, change log).
 
 ### Nature of the data
 Mostly business data published by the business itself (its own site) or by the State of Texas (the licence
-register). The only personal data are the licence holder name (being removed), a named business email published on
-the business's own site, and possibly a phone that turns out to be a person's own line. No special-category or
-criminal-offence data is held.
+register). The only personal data are the licence holder name (being removed), a named business email and the name
+and role of a named owner or manager, both as published on the business's own site, and possibly a phone that turns
+out to be a person's own line. No special-category or criminal-offence data is held.
 
 ### Reasonable expectations of a licensed business
 - Texas requires A/C contractors to show their licence number in their advertising: 16 TAC §75.71(h)
@@ -140,6 +140,7 @@ affects only whether a business receives a B2B email. It has no legal or similar
 | The website reader obeys robots.txt and sends an honest User-Agent with the contact address admin@optomate.co.uk | `lookup-automation.md`, "Own-site reader" and 2026-10-29 "User-Agent contact address" |
 | Data stays on Ahmed's Mac; `data/` is Git-ignored, so GitHub holds code only | `data-sources.md`, "Rules applied"; `signal-rules.md`, "Data origin" |
 | Retention: 6 months after last contact; the do-not-contact list is kept permanently with minimum data, only to honour objections | Fixed fact (not yet in a decision file) |
+| Named owner/manager: found by code on the own site only, kept in `data/` only, never in an email; the research model reads page text only after the names are removed; outreach CSVs older than 6 months are deleted at the start of each weekly run | `docs/agents/sales-researcher.md`, hard rules 6, 7 and 10, Step 1 |
 
 ### Risks and how they are handled
 
