@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from calibration.select_test_groups import select_calibration_groups
 from leads.dfw_filter import LEAD_COLUMNS
 from ranking.hot_lead_score import rank_dfw_leads
+import ranking.write_ranked_leads as writer_module
 from ranking.write_ranked_leads import (LOGS_DIR, RANKED_COLUMNS, main, rank_and_write, ranked_leads_path,
                                         write_ranked_leads)
 
@@ -184,3 +185,27 @@ def test_written_file_feeds_calibration_selection(logs, tmp_path):
     path = rank_and_write(*logs, "2026-11", ranked_at=RANKED_AT, logs_dir=tmp_path)
     groups = select_calibration_groups(read_back(path), seed=20261027, group_size=1)
     assert groups["hot"][0] in {"113684", "0113690"} and groups["cold"] == ["113701"]
+
+
+# --- review fixes (L1, L2) ----------------------------------------------------------------------------------------
+
+def test_file_is_readable_by_others_after_every_run(logs, tmp_path):  # L1: mkstemp alone would leave 0o600
+    for _ in range(2):
+        path = rank_and_write(*logs, "2026-11", ranked_at=RANKED_AT, logs_dir=tmp_path)
+        assert path.stat().st_mode & 0o777 == 0o644
+
+
+def test_bad_month_on_the_command_line_is_an_argparse_error(logs, tmp_path, capsys, monkeypatch):  # L2
+    leads, calls, forms = logs
+    monkeypatch.setattr(writer_module, "rank_dfw_leads", lambda *a, **k: pytest.fail("ranked before month check"))
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(calls), str(forms), "--month", "2026-13", "--leads", str(leads), "--logs-dir", str(tmp_path)])
+    assert exit_info.value.code == 2
+    assert "--month: year_month must be YYYY-MM, got '2026-13'" in capsys.readouterr().err
+    assert list(tmp_path.glob("*_ranked_leads.csv")) == []
+
+
+def test_bad_month_is_refused_before_ranking(logs, tmp_path, monkeypatch):  # L2, library entry point
+    monkeypatch.setattr(writer_module, "rank_dfw_leads", lambda *a, **k: pytest.fail("ranked before month check"))
+    with pytest.raises(ValueError, match="YYYY-MM"):
+        rank_and_write(*logs, "2026-13", ranked_at=RANKED_AT, logs_dir=tmp_path)

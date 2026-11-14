@@ -55,6 +55,7 @@ def write_ranked_leads(rows: list[dict], year_month: str, logs_dir=LOGS_DIR) -> 
             writer = csv.DictWriter(f, fieldnames=RANKED_COLUMNS)
             writer.writeheader()
             writer.writerows(rows)
+        os.chmod(tmp, 0o644)  # mkstemp makes 0o600; the reader may run as another account or a sync tool
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
@@ -68,15 +69,24 @@ def rank_and_write(leads_csv, call_log, form_log, year_month: str | None = None,
     if ranked_at.tzinfo is None:
         ranked_at = ranked_at.replace(tzinfo=DALLAS)
     year_month = year_month or ranked_at.astimezone(DALLAS).strftime("%Y-%m")
+    ranked_leads_path(year_month, logs_dir)  # refuse a bad month before ranking
     rows = rank_dfw_leads(leads_csv, call_log, form_log, year_month, ranked_at=ranked_at)
     return write_ranked_leads(rows, year_month, logs_dir)
+
+
+def _month_arg(value: str) -> str:
+    try:
+        ranked_leads_path(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+    return value
 
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Write data/logs/<YYYY-MM>_ranked_leads.csv")
     parser.add_argument("call_log")
     parser.add_argument("form_log")
-    parser.add_argument("--month", help="YYYY-MM to rank; default: this month in Dallas time")
+    parser.add_argument("--month", type=_month_arg, help="YYYY-MM to rank; default: this month in Dallas time")
     parser.add_argument("--leads", default=str(LEADS_CSV))
     parser.add_argument("--logs-dir", default=str(LOGS_DIR))
     args = parser.parse_args(argv)
