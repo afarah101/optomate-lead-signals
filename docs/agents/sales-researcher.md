@@ -38,7 +38,8 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
 9. Email Ahmed only: the **own address of the Gmail account that the Gmail connector is signed in to** (the user's
    own email in your context). No other recipient, no cc, no bcc. If you cannot tell that address, do not send.
 10. **Never read `data/outreach/.work/<date>_pages.json` or `data/outreach/<date>.csv`** (they hold names; no page
-    text). You read only `data/outreach/.work/<date>_model.json`, with names as `[name]` and reviews cut out.
+    text). You read only `data/outreach/.work/<date>_model.json`, with most names as `[name]` and most quoted passages
+    and review parts cut out (an automatic, partial cut: see "Page text" below; some can stay).
 
 ## Spec changes (2026-11-14, audit of dc27e3f)
 
@@ -47,7 +48,7 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
 - **Opening line (M2):** no review or testimonial quotes in the opening line (Script B also rejects quote marks), and
   every fact needs its page in `fact_source_url`, which must be one of the 2 fetched pages.
 - **Names by code (F3, M7):** Script A finds name and role in the **full** page text with code. Only the text that goes
-  to the model is redacted and cut to 5,000 characters per page.
+  to the model is partly redacted and cut to 5,000 characters per page.
 - **Email (F4, F5):** leads are shown as lead ID + trade + town. Script B checks the whole email for names before it
   changes anything, against every row's name tokens (2+ letters, with nicknames) and the full first-name list.
 - **CSV:** new first column `lead_id` (`L01`, `L02`, … in that week's file). Script B writes the CSV, not the model.
@@ -61,7 +62,8 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
 
 - **Redaction fails closed:** in the model copy, every capitalised word that is not a plain English word, a word from
   the DFW-word list or a word of the business name becomes `[name]`. So do a word with a signed initial ("Hope D.")
-  and a capitalised word next to `[name]`. The model sees less text, but no unlisted name.
+  and a capitalised word next to `[name]`. The model sees less text. Some names can still stay (see "Redaction (C)"
+  and "Page text" below).
 - **Throttle:** when robots.txt is fetched for a hop, the hop waits again, so every request is 1 second or more after
   the one before.
 - **Named person:** refused if it is in review or testimonial text (300 characters each side), ends in an initial,
@@ -86,9 +88,10 @@ Work folder: `/Users/ahmed.farah/optomate-lead-signals`. Run every command from 
 - **Retention (M8):** the date is the `YYYY-MM-DD` at the start of the file name (`2026-11-14_email.txt` too). Folders
   are not deleted; they are reported.
 - **Quotes (M2):** Script B also rejects single quote marks (`'`, `‘`, `’`) that are not an apostrophe inside a word.
-- **Raw page text:** only `_model.json` holds page text (redacted). Script B deletes it when the CSV is written; after
-  a run that stops early, the next run's Script A deletes it. With no next run it stays until deleted by hand (see
-  the audit of fe0f4b4 below: the "at most 7 days" claim is withdrawn).
+- **Raw page text:** only `_model.json` holds page text (partly redacted). Script B deletes it in the same run when the
+  CSV is written. If a run stops early, the cleanup line in Step 3 deletes it in that run; if that does not happen,
+  Script A deletes it at the start of the next weekly run. With no later run it stays until deleted by hand (see the
+  audit of fe0f4b4 below: the "at most 7 days" claim is withdrawn).
 
 ## Spec changes (2026-11-14, audit of 9b43910)
 
@@ -121,14 +124,21 @@ the task:
   ("Jo Doe—Owner") is refused, as "Jo Doe-Owner" already was.
 - **Page text (raw text finding):** `_pages.json` no longer holds page text, only page URLs (Script A records whether
   the name is on its source page as `person_on_page`). The model copy first loses, by an automatic and partial cut,
-  quoted passages of up to 600 characters (in double quote marks or `‘ ’`) and 300 characters each side of a review
-  word ("review", "testimonial", "recommend", "stars", "rated", "★"), then names. This is a heuristic: a quote in
-  straight single quotes or longer than 600 characters, or a review with no such mark, can still reach the model copy. The Article 14 notice and the LIA
-  now say exactly that; the legal choice is Ahmed's.
+  most quoted passages of up to 600 characters (between two of `"` `“` `”` `„` `«` `»` `‟` `＂` `″`, or between `‘`
+  and `’`) and 300 characters each side of a review word ("review", "testimonial", "recommend", "stars", "rated",
+  "★"), then most names. This is a heuristic. All of these can still reach the model copy: a quote in straight
+  single quotes (`'…'`), in `‹…›` or in `‚…‘`; a quote longer than 600 characters; a quote with no closing mark; the
+  inner text of nested quotes of the same kind (`“He said “great work” to me”` keeps `great work`); a real
+  double-quoted passage after a stray `"` or `″` (an inch mark such as `16x25x1"` pairs with the quote's opening
+  mark, so the quote's text stays); the end of a `‘…’` quote that holds a curly apostrophe (`don’t` ends the cut
+  early); a surname that is not next to a caught first name ("Smith fixed our AC" keeps "Smith"); and a review with
+  no review word. The Article 14 notice and the LIA say that the cut is partial; the legal
+  choice is Ahmed's.
 - **Quotes (M2):** Script B also rejects `` ` ``, `‛`, `‟`, `″`, `＂`, `‹`, `›` and `′`.
-- **Deletion (7 days):** the page text is deleted in the same run (Script B, or the cleanup line in Step 3 when a run
-  stops); after a crash, at the start of the next run. "At most 7 days" was true only if the weekly run happens, so
-  that claim is withdrawn here, in the Article 14 notice and in the LIA.
+- **Deletion (7 days):** Script B deletes the page text in the same run. If a run stops early, the cleanup line in
+  Step 3 deletes it in that run; if that does not happen, Script A deletes it at the start of the next weekly run.
+  With no later run it stays until deleted by hand. "At most 7 days" was true only if the weekly run happens, so that
+  claim is withdrawn here, in the Article 14 notice and in the LIA.
 - **Bad dates (M8):** a file whose name starts with an impossible date (`2026-02-30_pages.json`, `2026-02-30.csv`) is
   skipped and reported (`RETENTION skipped …`, `RECENT skipped …`); it never stops the run. Report it in the email.
 
@@ -155,7 +165,7 @@ Run Script A. It:
 - finds the named person and role in the full page text with code (hard rule 7);
 - writes `data/outreach/.work/<date>_pages.json` (lead data and page URLs, no page text, for Script B only) and
   `data/outreach/.work/<date>_model.json` (for you: an automatic, partial cut of quoted passages and review parts,
-  then names redacted; some review text can stay),
+  then most names redacted; some names, quotes and review text can stay),
   and prints each dropped row by licence number with its reason. It never prints a name.
 
 ```bash
