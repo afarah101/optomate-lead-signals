@@ -120,9 +120,10 @@ the task:
   "Co-Founder"; "Co–Owner" and "Co—Owner" are the role `co-owner`, like "Co-Owner". A dash joined to the role word
   ("Jo Doe—Owner") is refused, as "Jo Doe-Owner" already was.
 - **Page text (raw text finding):** `_pages.json` no longer holds page text, only page URLs (Script A records whether
-  the name is on its source page as `person_on_page`). The model copy first loses every quoted passage and 300
-  characters each side of a review word ("review", "testimonial", "recommend", "stars", "rated", "★"), then names.
-  This is a heuristic: a review with no such mark can still reach the model copy. The Article 14 notice and the LIA
+  the name is on its source page as `person_on_page`). The model copy first loses, by an automatic and partial cut,
+  quoted passages of up to 600 characters (in double quote marks or `‘ ’`) and 300 characters each side of a review
+  word ("review", "testimonial", "recommend", "stars", "rated", "★"), then names. This is a heuristic: a quote in
+  straight single quotes or longer than 600 characters, or a review with no such mark, can still reach the model copy. The Article 14 notice and the LIA
   now say exactly that; the legal choice is Ahmed's.
 - **Quotes (M2):** Script B also rejects `` ` ``, `‛`, `‟`, `″`, `＂`, `‹`, `›` and `′`.
 - **Deletion (7 days):** the page text is deleted in the same run (Script B, or the cleanup line in Step 3 when a run
@@ -153,7 +154,8 @@ Run Script A. It:
   before every request, redirect hops included;
 - finds the named person and role in the full page text with code (hard rule 7);
 - writes `data/outreach/.work/<date>_pages.json` (lead data and page URLs, no page text, for Script B only) and
-  `data/outreach/.work/<date>_model.json` (for you: quoted passages and review parts cut out, then names redacted),
+  `data/outreach/.work/<date>_model.json` (for you: an automatic, partial cut of quoted passages and review parts,
+  then names redacted; some review text can stay),
   and prints each dropped row by licence number with its reason. It never prints a name.
 
 ```bash

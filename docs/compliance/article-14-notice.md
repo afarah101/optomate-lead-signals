@@ -60,8 +60,9 @@ of your customers. It keeps only the page addresses, not the page text. For one 
 copy of the text (at most 5,000 characters per page) with names, quoted passages and the parts that look like
 reviews removed; this removal is automatic, so a review that does not look like one can stay in the copy. An AI model
 reads that copy only to pick one fact about your business for our first email (never a review or a customer's
-words). The copy is deleted in the same run; if a run stops early, it is deleted at the start of the next weekly run.
-Provider of that AI model: *[TO CONFIRM]*.
+words). The copy is deleted in the same run. If a run stops early, we delete it in that run when we stop; if that
+does not happen, it is deleted at the start of the next weekly run. With no later run it stays until deleted by hand.
+Provider of that AI model: Anthropic PBC (Claude).
 
 **Where it comes from.** Public business registers (TDLR), the business's own website, and open map datasets. All are
 publicly available. We can give the exact names on request.
