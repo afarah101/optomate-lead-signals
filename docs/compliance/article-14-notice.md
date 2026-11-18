@@ -1,7 +1,6 @@
 # Privacy notice: how Optomate found your business (draft, updated 2026-11-14)
 
 UK GDPR Article 14 notice, for businesses whose details Optomate did not collect from them directly.
-Rules behind each statement: `docs/compliance/legitimate-interests-assessment.md`.
 **Hosted at: [NOTICE_URL] (TO CONFIRM).**
 
 ---
@@ -52,9 +51,19 @@ sole traders.
 The licence register also lists the licence holder's name. We do not use it, and we are removing it from our records.
 
 **What we never collect or use.** Email addresses that are guessed, built from a pattern or bought; personal mobile
-numbers; review text (our tool reads up to 2 pages of your website, which can show reviews, but it never stores
-or uses review text, and it deletes that page text within 7 days); anything collected automatically from social
-media; and call recordings. We do not record calls.
+numbers; review text in our records or emails; anything collected automatically from social media; and call
+recordings. We do not record calls.
+
+**Your website's text.** Our research tool reads up to 2 pages of your website, which can show reviews and the names of
+your customers. It keeps only the page addresses, not the page text. For one research step it makes a temporary copy of
+the text (at most 5,000 characters per page). An automatic step removes most names, most quoted passages and the text
+near review words from that copy, but it can miss some names, quotes and review text (for example text in single quote
+marks, a very long quote, a surname on its own, or a review with no review word); that text can stay in the copy. An AI
+model reads that copy. It is told to pick one fact about your business for our first email, and a code check rejects any
+opening line that has quote marks or a detected name. The copy is deleted in the same run. If a run stops early, we
+delete it in that run when we stop; if that does not happen, it is deleted at the start of the next weekly run. With no
+later run it stays until deleted by hand.
+Provider of that AI model: Anthropic PBC (Claude).
 
 **Where it comes from.** Public business registers (TDLR), the business's own website, and open map datasets. All are
 publicly available. We can give the exact names on request.
@@ -63,12 +72,14 @@ publicly available. We can give the exact names on request.
 - **SuperSend** sends our emails (United States).
 - **Google** receives business-name searches through the Places API.
 - **Stripe UK** processes payments, only if you buy a pilot.
+- **Anthropic PBC (Claude)**, AI model provider, USA: reads the temporary copy of your website's text.
 
 Only Ahmed, at Optomate, sees the lists and makes the calls. The data is stored on Ahmed's Mac. Our code is kept on
 GitHub, but your data is not.
 
 **Transfers outside the UK.** SuperSend is in the United States. That transfer is protected by *[UK Data Bridge /
-IDTA / UK Addendum: TO CONFIRM from SuperSend's DPA]*.
+IDTA / UK Addendum: TO CONFIRM from SuperSend's DPA]*. Anthropic PBC (Claude), AI model provider, is in the USA. That
+transfer is protected by *[TO CONFIRM: depends on Ahmed's Claude plan terms]*.
 
 **How long we keep it.** We keep your data for 6 months after our last contact with you, then delete it. If you ask
 us not to contact you, we keep only the minimum needed to recognise your business, permanently, and only so that we
