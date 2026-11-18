@@ -488,8 +488,9 @@ for i, r in enumerate(kept):
                            "named_person": person, "role": role, "person_source_url": person_url,
                            "person_on_page": on_page})
 
-# Finding 2: page text is never written to _pages.json (page URLs only). The model copy is cut to review-free parts
-# (drop_reviews), then names are removed (redact), at most 5,000 characters per page.
+# Finding 2: page text is never written to _pages.json (page URLs only). The model copy gets a partial cut of quoted
+# passages and review parts (drop_reviews), then most names are redacted (redact), at most 5,000 characters per page.
+# Some names, quotes and review text can stay (spec "Page text" note).
 (WORK / f"{TODAY}_pages.json").write_text(json.dumps({"ranking_note": ranking_note, "leads": [
     r | {"pages": [{"url": p["url"]} for p in r["pages"]]} for r in researched]}, indent=1))
 (WORK / f"{TODAY}_model.json").write_text(json.dumps([
